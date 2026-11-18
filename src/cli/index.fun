@@ -1,6 +1,7 @@
 import { Array, Console, Effect, Option, Schema, String } from "effect"
 import { buildAgyCommand, buildInteractiveCommand } from "../services/provider.js"
 import { buildCloneCommand } from "../services/git.js"
+import { startReconcileLoop } from "../orchestrator/reconcile.js"
 
 export runSetup = (boardDir: String, repoUrl: String) => effect
   _ <- Console.log("=== SLOPBOSS2 SETUP ===")
@@ -21,9 +22,8 @@ export printStatus = (boardDir: String) => effect
 
 export runControlLoop = () => effect
   _ <- Console.log("Starting Slopboss2 control loop (provider: agy, dev-agents: 2)...")
-  _ <- Console.log("Reconciling board /home/dangelov/slopboss2-board against workspaces...")
-  _ <- Console.log("Control loop active. Press Ctrl+C to stop.")
-  => true
+  res <- startReconcileLoop("/home/dangelov/slopboss2-board", 3)
+  => res
 
 export main = () => effect
   args = globalThis.process.argv |> Array.drop(2)

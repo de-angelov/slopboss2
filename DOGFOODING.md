@@ -53,3 +53,22 @@ This document records architectural comparisons, observed shortcomings in the or
 | **Log Streaming** | Goroutines pumping `io.Reader` | Reactive backpressured Effect `Stream` |
 | **Compute Heavy Work** | Goroutine pools | Bun Workers + AssemblyScript SIMD Wasm (`as { ... }`) |
 | **Error Handling** | `if err != nil` (manual checks) | Typed `Effect<A, E, R>` error channels |
+
+---
+
+## 4. Compiler & Toolchain Bugs Discovered & Resolved in FunScript
+
+During the `slopboss2` dogfooding loop, three distinct bugs were caught, root-caused, and fixed in the `funscript` compiler:
+
+1. **Missing `esbuild` dependency in `package.json`**:
+   - `funscript` CLI commands used `transformSync` from `esbuild`, which was only transitively present in development. When installed as an npm package in `slopboss2`, `bunx funscript` threw `ERR_MODULE_NOT_FOUND: Cannot find package 'esbuild'`.
+   - **Fix**: Added `"esbuild": "^0.21.5"` to `dependencies` in `funscript/package.json` and repacked.
+
+2. **Wildcard rest-pattern destructuring syntax error (`[c, ..._]`)**:
+   - In pattern matches like `[c, ..._] => c`, `emitBindingTarget` was emitting `const [c, ...] = $matched;`, producing invalid JavaScript syntax because the discarded rest identifier was empty.
+   - **Fix**: Updated `src/emitter/emitter.ts` to omit wildcard rest bindings when target argument is empty.
+
+3. **`ts-pattern` variable unpacking in pattern-arm guards vs handlers**:
+   - When matching with `when` guards on scalar variables (`| l when l |> ... =>`), `ts-pattern` passes the raw value to the guard function, but passes a selection dictionary `{ [varName]: value }` to the arm handler. The compiler was attempting to unpack `{ _tag: _, ...__fields }` in both, corrupting scalar strings.
+   - **Fix**: Updated `src/emitter/match.ts` to assign `$matched` directly in guards and `{ [name] }` in handlers for `VariablePattern`.
+
