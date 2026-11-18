@@ -3,6 +3,13 @@ import { buildAgyCommand, buildInteractiveCommand } from "../services/provider.j
 import { buildCloneCommand } from "../services/git.js"
 import { startReconcileLoop } from "../orchestrator/reconcile.js"
 
+export buildGroomPrompt = (boardDir: String, backlogContent: String) =>
+  header = "You are the autonomous Team Lead for slopboss2.\n"
+  ctx = "Groom and prioritize tasks from BACKLOG.md for the board at: " + boardDir + "\n\n"
+  content = "--- CURRENT BACKLOG.md ---\n" + backlogContent + "\n--- END BACKLOG.md ---\n\n"
+  instructions = "Instructions:\n1. Review prioritized tasks in BACKLOG.md and verify readiness and dependencies.\n2. Format task specifications for TASKS.md including Task ID, Category, Owner, Branch, Status, Objective, Scope, Acceptance Criteria.\n3. Write groomed task allocations to TASKS.md and update BACKLOG.md."
+  => header + ctx + content + instructions
+
 export runSetup = (boardDir: String, repoUrl: String) => effect
   _ <- Console.log("=== SLOPBOSS2 SETUP ===")
   _ <- Console.log("Board directory: " + boardDir)
@@ -15,31 +22,49 @@ export runSetup = (boardDir: String, repoUrl: String) => effect
 export printStatus = (boardDir: String) => effect
   _ <- Console.log("=== SLOPBOSS2 BOARD STATUS ===")
   _ <- Console.log("Board: " + boardDir)
-  _ <- Console.log("Lane 1: Dev Agent 1 -> [SB2-01] Implement Antigravity provider (In Progress)")
-  _ <- Console.log("Lane 2: Dev Agent 2 -> [SB2-02] Implement Git workspace isolation (In Progress)")
-  _ <- Console.log("Fleet: 2 agents active, provider agy, 5 tasks pending in backlog.")
+  _ <- Console.log("Lane 1: Dev Agent 1 -> [SB2-03] Live Process Runner (Completed)")
+  _ <- Console.log("Lane 2: Dev Agent 2 -> [SB2-05] Interactive Grooming CLI (In Progress)")
+  _ <- Console.log("Fleet: 2 dev agents active, provider agy.")
   => true
 
-export runControlLoop = () => effect
+export launchInteractiveGroom = (boardDir: String, model: Option<String>) => effect
+  backlogPath = boardDir + "/BACKLOG.md"
+  rawText <- js globalThis.Bun.file(backlogPath).text()
+  backlogText = rawText |> Option.getOrElse(() => "")
+  prompt = buildGroomPrompt(boardDir, backlogText)
+  agyCmd = buildInteractiveCommand(model, prompt)
+  _ <- Console.log("Starting interactive Team Lead grooming session...")
+  _ <- Console.log("Command: " + (agyCmd |> Array.join(" ")))
+  proc = globalThis.Bun.spawn(agyCmd, {
+    cwd: boardDir,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit"
+  })
+  rawCode <- js proc.exited
+  code = rawCode |> Option.getOrElse(() => 0)
+  _ <- Console.log("Team Lead grooming session completed with exit code " + globalThis.String(code))
+  => code
+
+export runControlLoop = (boardDir: String, maxTicks: Number) => effect
   _ <- Console.log("Starting Slopboss2 control loop (provider: agy, dev-agents: 2)...")
-  res <- startReconcileLoop("/home/dangelov/slopboss2-board", 3)
+  res <- startReconcileLoop(boardDir, maxTicks)
   => res
 
-export main = () => effect
-  args = globalThis.process.argv |> Array.drop(2)
+export runCli = () => effect
+  rawArgs = globalThis.process.argv
+  args = rawArgs |> Array.drop(2)
   cmd = match args
     | [] => "status"
     | [c, ..._] => c
-  
-  _ <- match cmd
-    | "setup" => runSetup("/home/dangelov/slopboss2-board", "https://github.com/de-angelov/slopboss2.git")
-    | "status" => printStatus("/home/dangelov/slopboss2-board")
-    | "groom" =>
-      prompt = "You are Team Lead. Groom BACKLOG.md and prioritize tasks for slopboss2."
-      agyCmd = buildInteractiveCommand(Option.none(), prompt)
-      Console.log("Launching interactive team lead session: " + (agyCmd |> Array.join(" ")))
-    | "run" => runControlLoop()
-    | other => Console.log("Unknown command: " + other + ". Usage: slopboss2 [setup|status|groom|run]")
-  => true
 
-launch = Effect.runPromise(main())
+  rawBoard = args |> Array.get(1)
+  boardDir = rawBoard |> Option.getOrElse(() => "/home/dangelov/slopboss2-board")
+
+  _ <- match cmd
+    | "setup" => runSetup(boardDir, "https://github.com/de-angelov/slopboss2.git")
+    | "status" => printStatus(boardDir)
+    | "groom" => launchInteractiveGroom(boardDir, Option.none())
+    | "run" => runControlLoop(boardDir, 3)
+    | other => Console.log("Unknown command: " + other + ". Usage: slopboss2 [setup|status|groom|run] [boardDir]")
+  => true
