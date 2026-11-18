@@ -5,7 +5,7 @@ import {
   buildBranchMergedCheck,
   buildCommitCommand,
   buildPushCommand,
-} from "../dist/services/git.js";
+} from "../src/services/git.js";
 
 describe("Git Service Commands", () => {
   it("builds git clone command", () => {

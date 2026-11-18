@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Effect, Scope } from "effect";
-import { spawnScopedProcess, runMockAgentSession } from "../dist/services/runner.js";
+import { spawnScopedProcess, runMockAgentSession } from "../src/services/runner.js";
 
 describe("Live Process Runner & Fiber Supervisor", () => {
   it("spawns a child process and cleans it up via Scope finalizer", async () => {

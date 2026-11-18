@@ -1,0 +1,4 @@
+preload = ["funscript/bun"]
+
+[test]
+preload = ["funscript/bun"]

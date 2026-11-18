@@ -10,7 +10,7 @@
     "build": "funscript build src/cli/index.fun src/domain/board.fun src/domain/session.fun src/services/git.fun src/services/provider.fun src/orchestrator/reconcile.fun --outDir dist --sourcemap",
     "typecheck": "funscript tsc --noEmit",
     "test": "bun test",
-    "start": "bun run dist/cli/index.js"
+    "start": "bun run src/cli/index.fun"
   },
   "dependencies": {
     "effect": "^4.1.2",

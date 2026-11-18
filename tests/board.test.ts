@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseTaskLine, formatTaskLine, Done, InProgress, Todo } from "../dist/domain/board.js";
+import { parseTaskLine, formatTaskLine, Done, InProgress, Todo } from "../src/domain/board.js";
 import { Option } from "effect";
 
 describe("Board domain parser & formatter", () => {

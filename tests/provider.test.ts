@@ -6,7 +6,7 @@ import {
   parseAgyLine,
   UsageLimitReached,
   SessionCompleted,
-} from "../dist/services/provider.js";
+} from "../src/services/provider.js";
 
 describe("Antigravity (agy) Provider Service", () => {
   it("builds headless agy command without model", () => {

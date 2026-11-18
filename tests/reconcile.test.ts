@@ -4,7 +4,7 @@ import {
   initialOrchestratorState,
   reconcileTick,
   startReconcileLoop,
-} from "../dist/orchestrator/reconcile.js";
+} from "../src/orchestrator/reconcile.js";
 
 describe("Orchestrator Reconciliation Engine", () => {
   it("initializes orchestrator state with 2 dev agents", () => {
