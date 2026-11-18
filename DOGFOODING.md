@@ -19,6 +19,34 @@ This document records architectural comparisons, observed shortcomings in the or
 ### 1.3 Polling-Only Architecture
 - The controller relies on fixed-interval ticker loops (`time.NewTicker(config.PollInterval)`) to read `BACKLOG.md` and `TASKS.md`. There is no reactive file system event integration (e.g. `inotify`), causing unnecessary disk I/O when idle and up to 5-second latency before responding to human edits.
 
+### 1.4 Historical Production Failure Modes in Go `slopboss` & How `slopboss2` Solves Them
+
+Real-world agent runs in the original Go repository surfaced 5 major failure modes that frequently stalled or broke autonomous development:
+
+1. **Concurrent Git Push Collisions**:
+   - **Problem & Failure**: When Dev Agent 1 and Dev Agent 2 completed task branches simultaneously, both raced to squash-merge and push to `origin/main`. The second push was rejected as non-fast-forward, causing the second agent's completed task to be marked as `Failed`, discarding working code and requiring manual rollback.
+   - **Go Patch (`34f48cd`)**: Wrapped git operations in a 3-attempt retry loop with exponential sleep backoff and `git reset --hard origin/main`.
+   - **`slopboss2` Solution**: Handled fundamentally via a linearized Effect `Queue` for the merge train. Merges and pushes execute sequentially in a single supervised fiber, eliminating push races by design.
+
+2. **Zero-Commit & Audit Task Rejection**:
+   - **Problem & Failure**: The Go merge train validated branches via `ahead, err := git.CommitsAheadOfBase(...)`. If `ahead == 0`, it aborted with `no commits found on branch ahead of origin/main (ahead=0)`. This caused audit, characterization, or investigation tasks (which analyze code without producing git diffs) to fail and block board progression.
+   - **Go Patch (`34f48cd`)**: Added an ad-hoc bypass for zero-commit tasks to run verification without requiring a git commit.
+   - **`slopboss2` Solution**: Distinct task categories (`Audit`, `Investigation`, `Feature`) are modeled in the typed domain schema (`slopboss2/src/domain/board.fun`), cleanly routing non-code audit tasks past the git merge train.
+
+3. **Redundant Team Lead Session Thrashing**:
+   - **Problem & Failure**: Unstable synthetic task keys for follow-up sessions caused the scheduler to immediately spawn another Team Lead session whenever any agent completed or blocked. This spun back-to-back LLM sessions in a tight loop, burning thousands of LLM tokens before dev agents could claim work.
+   - **Go Patch (`9c2e8fa`)**: Hashed task dependencies (`sha256(blockedTasks)`) and cached durable controller leases to debounce invocations.
+   - **`slopboss2` Solution**: Managed natively with Effect's `Schedule.spaced` with jitter and atomic state transitions over `Ref<OrchestratorState>`, preventing thrashing.
+
+4. **Trailing Prose Breaking Verification Commands**:
+   - **Problem & Failure**: LLMs frequently appended explanations to generated verification blocks (e.g. `## Verification\nnpm test tests/parser.test.ts. Verify that all 12 tests pass.`). Passing this raw string into `bash -c` caused syntax errors on the trailing English prose.
+   - **Go Patch (`e21346a`)**: Added regex heuristics to strip trailing sentences matching `(?:\.\s+[A-Z][a-zA-Z]+.*$)`.
+   - **`slopboss2` Solution**: Sanitized during markdown parsing in `slopboss2/src/domain/board.fun` by strictly extracting fenced code blocks rather than raw text.
+
+5. **Zombie Processes & Detached Subprocesses**:
+   - **Problem & Failure**: Go relied on `syscall.Kill(-pgid, SIGTERM)` to terminate agent sessions. If child CLI tools (compilers, vitest, git) spawned independent process groups or ignored `SIGTERM`, orphan background processes survived indefinitely, consuming CPU and holding locks on git repositories.
+   - **`slopboss2` Solution**: Effect's `Scope.addFinalizer` hooks into fiber termination, closing all stdio stream sinks and escalating from `SIGTERM` to `SIGKILL` if the child process does not exit promptly.
+
 ---
 
 ## 2. Shortcomings & Friction Points in FunScript
