@@ -1,5 +1,5 @@
 import { Array, Console, Effect, Option, Schema, Scope, String } from "effect"
-import { parseAgyLine } from "./provider.js"
+import { parseAgyLine, SessionCompleted } from "./provider.js"
 
 export schema SessionResult = {
   exitCode: Number
@@ -7,9 +7,9 @@ export schema SessionResult = {
   completed: Boolean
 }
 
-// Spawns a process wrapped in Effect Scope lifecycle.
+// Spawns a process wrapped in the caller's Effect Scope lifecycle.
 // On Scope exit (interruption, error, or completion), SIGTERM is sent to guarantee no orphaned processes.
-export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect
+export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscoped)
   proc = globalThis.Bun.spawn(cmd, {
     cwd: cwd,
     stdin: "pipe",
@@ -24,6 +24,33 @@ export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect
   )
 
   => proc
+
+// Executes an agent subprocess to completion inside an Effect Scope,
+// piping stdin, collecting stdout stream, and extracting structured events.
+export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<String>) => effect
+  proc <- spawnScopedProcess(cmd, cwd)
+  _ = match stdinText
+    | Some(text) =>
+      proc.stdin.write(text)
+      proc.stdin.flush()
+      proc.stdin.end()
+    | None =>
+      proc.stdin.end()
+  rawOut <- js globalThis.Bun.readableStreamToText(proc.stdout)
+  outText = rawOut |> Option.getOrElse(() => "")
+  rawCode <- js proc.exited
+  code = rawCode |> Option.getOrElse(() => 0)
+  lines = outText |> String.split("\n")
+  events = lines |> Array.filterMap(parseAgyLine)
+  isCompleted = events |> Array.some((e) => match e
+    | SessionCompleted => true
+    | _ => false
+  )
+  => {
+    exitCode: code,
+    totalTokens: lines |> Array.length,
+    completed: isCompleted or code #= 0
+  }
 
 export runMockAgentSession = (agentName: String, taskId: String) => effect
   _ <- Console.log("[RUNNER] Agent " + agentName + " started executing task " + taskId)
