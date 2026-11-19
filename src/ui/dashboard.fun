@@ -3,8 +3,8 @@ import { Array, Option, Schema, String } from "effect"
 export schema AgentLane = {
   id: String
   status: String
-  task?: String
-  branch?: String
+  task: Option<String>
+  branch: Option<String>
 }
 
 export schema TokenUsage = {
@@ -30,13 +30,11 @@ export formatStatusColor = (status: String) =>
   => res
 
 export renderLane = (lane: AgentLane) =>
-  taskOpt = Option.fromNullishOr(lane.task)
-  taskInfo = match taskOpt
+  taskInfo = match lane.task
     | Some(t) => " | Task: " + t
     | None => " | Task: (idle)"
 
-  branchOpt = Option.fromNullishOr(lane.branch)
-  branchInfo = match branchOpt
+  branchInfo = match lane.branch
     | Some(b) => " | Branch: " + b
     | None => ""
 

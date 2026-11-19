@@ -21,7 +21,8 @@ describe("Linearized Merge Train Queue & Automatic Landing", () => {
     const result = await Effect.runPromise(landMergeRequest(req, "main"));
     expect(result.taskId).toBe("SB2-AUDIT-01");
     expect(result.success).toBe(true);
-    expect(result.commitHash).toBeUndefined();
+    expect(result.commitHash).toEqual(Option.none());
+    expect(result.error).toEqual(Option.none());
   });
 
   it("lands standard code branch with squash commit and verification", async () => {
@@ -36,7 +37,8 @@ describe("Linearized Merge Train Queue & Automatic Landing", () => {
     const result = await Effect.runPromise(landMergeRequest(req, "main"));
     expect(result.taskId).toBe("SB2-03");
     expect(result.success).toBe(true);
-    expect(result.commitHash).toBeDefined();
+    expect(result.commitHash).toEqual(Option.some("f1a2b3c4d5e6"));
+    expect(result.error).toEqual(Option.none());
   });
 
   it("processes concurrent merge requests strictly sequentially through Effect Queue", async () => {

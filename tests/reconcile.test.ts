@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Effect, Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 import {
   initialOrchestratorState,
   reconcileTick,
@@ -12,13 +12,19 @@ describe("Orchestrator Reconciliation Engine", () => {
     expect(state.tickCount).toBe(0);
     expect(state.agents.length).toBe(2);
     expect(state.agents[0].id).toBe("Dev Agent 1");
+    expect(state.agents[0].currentTask).toEqual(Option.none());
     expect(state.agents[1].id).toBe("Dev Agent 2");
+    expect(state.agents[1].currentTask).toEqual(Option.none());
   });
 
   it("advances tickCount on each reconcileTick", async () => {
     const stateRef = await Effect.runPromise(Ref.make(initialOrchestratorState()));
     const tick1 = await Effect.runPromise(reconcileTick(stateRef, "/tmp/board"));
     expect(tick1).toBe(1);
+    const mid = await Effect.runPromise(Ref.get(stateRef));
+    expect(mid.agents[0].currentTask).toEqual(Option.some("SB2-03"));
+    expect(mid.agents[1].currentTask).toEqual(Option.some("SB2-05"));
+
     const tick2 = await Effect.runPromise(reconcileTick(stateRef, "/tmp/board"));
     expect(tick2).toBe(2);
     const current = await Effect.runPromise(Ref.get(stateRef));

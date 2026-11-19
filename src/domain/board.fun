@@ -11,8 +11,8 @@ export schema Task = {
   title: String
   description: String
   status: TaskStatus
-  assignee?: String
-  branch?: String
+  assignee: Option<String>
+  branch: Option<String>
   dependsOn: Array<String>
 }
 
@@ -31,6 +31,8 @@ export parseTaskLine = (line: String) =>
         title: body,
         description: body,
         status: Done,
+        assignee: Option.none(),
+        branch: Option.none(),
         dependsOn: []
       }
     | t when t |> String.startsWith("- [/]") =>
@@ -40,6 +42,8 @@ export parseTaskLine = (line: String) =>
         title: body,
         description: body,
         status: InProgress,
+        assignee: Option.none(),
+        branch: Option.none(),
         dependsOn: []
       }
     | t when t |> String.startsWith("- [ ]") =>
@@ -49,6 +53,8 @@ export parseTaskLine = (line: String) =>
         title: body,
         description: body,
         status: Todo,
+        assignee: Option.none(),
+        branch: Option.none(),
         dependsOn: []
       }
     | _ =>
@@ -57,6 +63,8 @@ export parseTaskLine = (line: String) =>
         title: trimmed,
         description: trimmed,
         status: Blocked,
+        assignee: Option.none(),
+        branch: Option.none(),
         dependsOn: []
       }
   => parsed
