@@ -163,6 +163,10 @@ export const SyncServices = {
   layer: Layer.merge(Layer.succeed(FileSystem.FileSystem, SyncFileSystem), Path.layer),
 };
 
+export function runSyncWithPlatform<A>(effect: Effect.Effect<A, any, any>): A {
+  return Effect.runSync(effect.pipe(Effect.provide(SyncServices.layer)));
+}
+
 export interface SafeSpawnResult {
   exitCode: number;
   stdout: string;
