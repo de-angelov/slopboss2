@@ -1,5 +1,5 @@
 import { Array, Deferred, Duration, Effect, FileSystem, Option, Path, Predicate, Ref, Schedule, Schema, String } from "effect"
-import { BunServices, loadBoardStoreSync } from "../domain/boardstore.js"
+import { BoardStore, MarkdownSection, TaskBlock, BunServices, loadBoardStoreSync } from "../domain/boardstore.js"
 import { AgentLane, DashboardState, renderFullDashboard, TokenUsage } from "../ui/dashboard.js"
 
 export schema LiveViewOptions = {
@@ -18,60 +18,59 @@ safeInvoke = (target: Unknown, method: String, args: Array<Unknown>) => {
     match isFn
       | true => Reflect.apply(fnObj, target, args)
       | false => globalThis.undefined
+      | _ => globalThis.undefined
     => true
   }) |> Effect.catch((_) => Effect.succeed(false)) |> Effect.runSync
   => res
 }
 
 readLanesAndStoreLogs = (boardDir: String) => {
-  storeRes = Effect.try(() => loadBoardStoreSync(boardDir)) |> Effect.option |> Effect.runSync
+  storeRes: Option<BoardStore> = Effect.try(() => loadBoardStoreSync(boardDir)) |> Effect.option |> Effect.runSync
   match storeRes
     | Some(store) =>
-        storeVal: Any = store
-        sections: Array<Any> = storeVal.tasksDoc.sections
-        laneLogs: Array<String> = sections |> Array.flatMap((sec: Any) => {
+        sections = store.tasksDoc.sections
+        laneLogs: Array<String> = sections |> Array.flatMap((sec: MarkdownSection) => {
           laneIdRaw = sec.name |> String.replace(globalThis.RegExp("\\s+In Progress$", "i"), "") |> String.trim
           laneId = match laneIdRaw
             | "" => sec.name
             | id => id
-          tasks: Array<Any> = sec.tasks
-          activeTaskOpt: Option<Any> = tasks |> Array.findFirst((t: Any) => t.status #= "In Progress")
-          activeTask: Option<Any> = match activeTaskOpt
+          tasks = sec.tasks
+          activeTaskOpt: Option<TaskBlock> = tasks |> Array.findFirst((t: TaskBlock) => t.status #= "In Progress")
+          activeTask: Option<TaskBlock> = match activeTaskOpt
             | Some(t) => Option.some(t)
             | None => tasks |> Array.head
           res: Array<String> = match activeTask
             | Some(t) =>
-                tVal: Any = t
-                match (tVal.id #! "")
-                  | true => ["[TASK] " + laneId + " working on " + tVal.id + " (" + tVal.title + ")"]
+                match (t.id #! "")
+                  | true => ["[TASK] " + laneId + " working on " + t.id + " (" + t.title + ")"]
                   | false => []
+                  | _ => []
             | _ => []
           => res
         })
 
-        lanes: Array<AgentLane> = sections |> Array.map((sec: Any) => {
+        lanes: Array<AgentLane> = sections |> Array.map((sec: MarkdownSection) => {
           laneIdRaw = sec.name |> String.replace(globalThis.RegExp("\\s+In Progress$", "i"), "") |> String.trim
           laneId = match laneIdRaw
             | "" => sec.name
             | id => id
-          tasks: Array<Any> = sec.tasks
-          activeTaskOpt: Option<Any> = tasks |> Array.findFirst((t: Any) => t.status #= "In Progress")
-          activeTask: Option<Any> = match activeTaskOpt
+          tasks = sec.tasks
+          activeTaskOpt: Option<TaskBlock> = tasks |> Array.findFirst((t: TaskBlock) => t.status #= "In Progress")
+          activeTask: Option<TaskBlock> = match activeTaskOpt
             | Some(t) => Option.some(t)
             | None => tasks |> Array.head
           res: AgentLane = match activeTask
             | Some(t) =>
-                tVal: Any = t
-                statusVal = match tVal.status
+                statusVal = match t.status
                   | "" => "In Progress"
                   | s => s
-                branchVal = match tVal.branch
+                branchVal = match t.branch
                   | "" => Option.none()
                   | b => Option.some(b)
                 {
                   id: laneId,
                   status: statusVal,
-                  task: Option.some(tVal.id),
+                  task: Option.some(t.id),
                   branch: branchVal
                 }
             | _ =>
@@ -84,10 +83,10 @@ readLanesAndStoreLogs = (boardDir: String) => {
           => res
         })
 
-        archiveSections: Array<Any> = storeVal.archiveDoc.sections
-        archiveLogs: Array<String> = archiveSections |> Array.flatMap((sec: Any) => {
-          tasks: Array<Any> = sec.tasks
-          res: Array<String> = tasks |> Array.takeRight(3) |> Array.flatMap((t: Any) => match t.id
+        archiveSections = store.archiveDoc.sections
+        archiveLogs: Array<String> = archiveSections |> Array.flatMap((sec: MarkdownSection) => {
+          tasks = sec.tasks
+          res: Array<String> = tasks |> Array.takeRight(3) |> Array.flatMap((t: TaskBlock) => match t.id
             | "" => []
             | id => ["[MERGE TRAIN] Task " + id + " landed cleanly."]
           )
@@ -112,38 +111,34 @@ readTokensSync = (boardDir: String): TokenUsage => {
     hasAlt <- match hasPrimary
       | true => Effect.succeed(false)
       | false => fsService.exists(altTokenPath)
+      | _ => Effect.succeed(false)
     targetPath = match hasPrimary
       | true => Option.some(tokenPath)
       | false => match hasAlt
         | true => Option.some(altTokenPath)
         | false => Option.none()
+        | _ => Option.none()
+      | _ => Option.none()
 
     rawOpt <- match targetPath
       | Some(p) => fsService.readFileString(p) |> Effect.option
       | None => Effect.succeed(Option.none())
 
-    tokens = match rawOpt
+    tokens: TokenUsage = match rawOpt
       | Some(raw) =>
-          parsed: Any = globalThis.JSON.parse(raw)
-          rawInp: Number = globalThis.Number(parsed.inputTokens)
-          inp = match (rawInp > 0)
-            | true => rawInp
-            | false => 0
-          rawOut: Number = globalThis.Number(parsed.outputTokens)
-          out = match (rawOut > 0)
-            | true => rawOut
-            | false => 0
-          rawTot: Number = globalThis.Number(parsed.totalTokens)
-          tot = match (rawTot > 0)
-            | true => rawTot
-            | false => 0
-          { inputTokens: inp, outputTokens: out, totalTokens: tot }
-      | None =>
-          { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+          parsedOpt: Option<TokenUsage> = Schema.decodeUnknownOption(Schema.fromJsonString(TokenUsage))(raw)
+          match parsedOpt
+            | Some(tok) => tok
+            | None => { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+            | _ => { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+      | None => { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+      | _ => { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+
     => tokens
   }
 
-  res: TokenUsage = readEffect |> Effect.provide(BunServices.layer) |> Effect.catch((_) => Effect.succeed({ inputTokens: 0, outputTokens: 0, totalTokens: 0 })) |> Effect.runSync
+  fallbackTokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  res: TokenUsage = readEffect |> Effect.provide(BunServices.layer) |> Effect.catch((_) => Effect.succeed(fallbackTokenUsage)) |> Effect.runSync
   => res
 }
 
@@ -156,23 +151,24 @@ readRecentLogsSync = (boardDir: String, initialLogs: Array<String>): Array<Strin
     rawOpt <- match hasLog
       | true => fsService.readFileString(logPath) |> Effect.option
       | false => Effect.succeed(Option.none())
+      | _ => Effect.succeed(Option.none())
+
     logs = match rawOpt
       | Some(raw) =>
-          lines = raw |> String.split(globalThis.RegExp("\\r?\\n")) |> Array.filter((l) => (l |> String.trim) #! "")
-          match lines |> Array.length
-            | 0 => initialLogs
-            | _ => lines |> Array.takeRight(5)
+          lines = raw |> String.split("\n") |> Array.filter((l: String) => (l |> String.trim) #! "")
+          recentLines = lines |> Array.takeRight(10)
+          Array.appendAll(initialLogs, recentLines)
       | None => initialLogs
+      | _ => initialLogs
+
     => logs
   }
 
   logsFromFs: Array<String> = readEffect |> Effect.provide(BunServices.layer) |> Effect.catch((_) => Effect.succeed(initialLogs)) |> Effect.runSync
-
-  withFallback: Array<String> = match (logsFromFs |> Array.length)
-    | 0 => ["[IDLE] Waiting for next dispatch cycle..."]
+  res: Array<String> = match (logsFromFs |> Array.length)
+    | 0 => ["[SYSTEM] Live dashboard active. Waiting for orchestrator events..."]
     | _ => logsFromFs
-
-  => withFallback |> Array.dedupe |> Array.takeRight(6)
+  => res
 }
 
 export readDashboardState = (boardDir: String): DashboardState => {
@@ -196,20 +192,32 @@ export readDashboardState = (boardDir: String): DashboardState => {
   }
 }
 
-runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions) => effect {
-  rawOpts: Any = options
-  stdin: Unknown = match rawOpts.stdin
-    | inStream when Predicate.isNotNullish(inStream) => inStream
-    | _ => process.stdin
+extractOption = (opt: Option<Unknown>, fallback: Unknown): Unknown =>
+  match opt
+    | Some(v) => v
+    | None => fallback
+    | rawVal when Predicate.isNotNullish(rawVal) => rawVal
+    | _ => fallback
 
-  stdout: Unknown = match rawOpts.stdout
-    | outStream when Predicate.isNotNullish(outStream) => outStream
-    | _ => process.stdout
+extractMaxTicks = (opt: Option<Number>): Number =>
+  match opt
+    | Some(v) => match (v > 0)
+        | true => v
+        | false => globalThis.Infinity
+        | _ => globalThis.Infinity
+    | None => globalThis.Infinity
+    | rawVal when Predicate.isNotNullish(rawVal) =>
+        num = globalThis.Number(rawVal)
+        match (num > 0)
+          | true => num
+          | false => globalThis.Infinity
+          | _ => globalThis.Infinity
+    | _ => globalThis.Infinity
 
-  rawMax: Number = globalThis.Number(rawOpts.maxTicks)
-  maxTicks: Number = match (rawMax > 0)
-    | true => rawMax
-    | false => globalThis.Infinity
+runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions) => effect (unscoped) {
+  stdin: Unknown = extractOption(options.stdin, process.stdin)
+  stdout: Unknown = extractOption(options.stdout, process.stdout)
+  maxTicks: Number = extractMaxTicks(options.maxTicks)
 
   intervalMs = globalThis.Math.max(pollMs, 10)
 
@@ -228,6 +236,7 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
     match isExitKey
       | true => Deferred.succeed(doneDeferred, true) |> Effect.runSync
       | false => false
+      | _ => false
     => true
   }
 
@@ -246,10 +255,12 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
   _s4: Unknown = safeInvoke(stdin, "setEncoding", ["utf8"])
   _s5: Unknown = safeInvoke(stdin, "on", ["data", onData])
 
-  sig: Any = rawOpts.signal
-  _sig: Unknown = match Predicate.isNotNullish(sig)
+  sigVal = extractOption(options.signal, globalThis.undefined)
+  _sig: Unknown = match Predicate.isNotNullish(sigVal)
     | true =>
-        aborted: Boolean = Reflect.get(globalThis.Object(sig), "aborted")
+        sigObj: Any = globalThis.Object(sigVal)
+        abortedVal: Any = Reflect.get(sigObj, "aborted")
+        aborted = Boolean(abortedVal)
         match aborted
           | true =>
               _ = Deferred.succeed(doneDeferred, true) |> Effect.runSync
@@ -259,8 +270,10 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
                 _ = Deferred.succeed(doneDeferred, true) |> Effect.runSync
                 => true
               }
-              safeInvoke(sig, "addEventListener", ["abort", abortListener, { once: true }])
+              safeInvoke(sigVal, "addEventListener", ["abort", abortListener, { once: true }])
+          | _ => true
     | false => true
+    | _ => true
 
   tick = effect {
     cnt <- Ref.updateAndGet(tickCountRef, (n: Number) => n + 1)
@@ -268,10 +281,15 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
     state = readDashboardState(boardDir)
     output = renderFullDashboard(state)
     _w: Unknown = safeInvoke(stdout, "write", [output])
-    _t: Unknown = safeInvoke(rawOpts, "onTick", [state, output])
+    onTickVal = extractOption(options.onTick, globalThis.undefined)
+    _t: Unknown = match Predicate.isFunction(onTickVal)
+      | true => safeInvoke(onTickVal, "call", [globalThis.undefined, state, output])
+      | false => true
+      | _ => true
     _d <- match (cntNum >= maxTicks)
       | true => Deferred.succeed(doneDeferred, true)
       | false => Effect.void
+      | _ => Effect.void
     => true
   }
 
@@ -287,11 +305,21 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
   => res
 }
 
-export runLiveView = (boardDir: String, pollMs: Number = 1000, options: LiveViewOptions = {}) =>
+export defaultLiveViewOptions: LiveViewOptions = {
+  stdin: Option.none(),
+  stdout: Option.none(),
+  maxTicks: Option.none(),
+  signal: Option.none(),
+  onTick: Option.none()
+}
+
+export runLiveView = (boardDir: String, pollMs: Number = 1000, options: LiveViewOptions = defaultLiveViewOptions) =>
   runLiveViewScoped(boardDir, pollMs, options) |> Effect.scoped
 
-export runLiveViewAsync = (boardDir: String, pollMs: Number = 1000, options: LiveViewOptions = {}) =>
+export runLiveViewAsync = (boardDir: String, pollMs: Number = 1000, options: LiveViewOptions = defaultLiveViewOptions) =>
   Effect.runPromise(runLiveView(boardDir, pollMs, options))
 
 export runLiveViewFun = (boardDir: String, pollMs: Number = 1000) =>
-  runLiveView(boardDir, pollMs, {})
+  runLiveView(boardDir, pollMs, defaultLiveViewOptions)
+
+export main = () => runLiveViewFun(".")
