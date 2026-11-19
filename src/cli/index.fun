@@ -9,7 +9,7 @@ ts {
   import { runReconcilerLoop, type ReconcilerConfig, type ReconcilerState } from "../orchestrator/dispatcher.js";
   import { initBoardStructure, initBoardStructureSync, type BoardInitResultTs } from "../services/setup.js";
   import { buildInteractiveCommand } from "../services/provider.js";
-  import { runLiveView } from "./view.js";
+  import { runLiveView, type LiveViewOptions } from "./view.js";
 
   export const DEFAULT_BOARD_DIR = process.env.SLOPBOSS_BOARD_DIR || "/home/dangelov/slopboss2-board";
 
@@ -58,6 +58,7 @@ ts {
     command: "view";
     type: "view";
     dir: string;
+    pollIntervalMs?: number;
     help: boolean;
   }
 
@@ -92,6 +93,7 @@ ts {
     maxIterations?: number;
     pollIntervalMs?: number;
     runnerFn?: any;
+    viewOptions?: LiveViewOptions;
   }
 
   export function buildGroomPrompt(boardDir: string, backlogContent: string): string {
@@ -389,14 +391,18 @@ ts {
             args: subArgs,
             options: {
               dir: { type: "string", short: "d" },
+              "poll-interval": { type: "string" },
+              pollInterval: { type: "string" },
               help: { type: "boolean", short: "h" },
             },
             allowPositionals: true,
           });
+          const pollIntervalRaw = (values["poll-interval"] || values["pollInterval"]) as string | undefined;
           return {
             command: "view",
             type: "view",
             dir: (values.dir as string) || positionals[0] || defaultDir,
+            pollIntervalMs: pollIntervalRaw ? parseInt(pollIntervalRaw, 10) : undefined,
             help: Boolean(values.help),
           };
         } catch (err: any) {
@@ -546,6 +552,14 @@ ts {
     });
   }
 
+  export function runViewCommand(
+    dir: string,
+    pollMs: number = 1000,
+    options?: LiveViewOptions
+  ): Effect.Effect<boolean, Error> {
+    return runLiveView(dir, pollMs, options);
+  }
+
   export function runControlLoop(boardDir: string, maxTicks: number = 3): Effect.Effect<any, Error> {
     return Effect.gen(function* () {
       console.log("Starting Slopboss2 control loop (provider: agy, dev-agents: 2)...");
@@ -594,7 +608,11 @@ ts {
         return printStatus(cmd.dir);
 
       case "view":
-        return runLiveView(cmd.dir, 1000);
+        return runViewCommand(
+          cmd.dir,
+          cmd.pollIntervalMs ?? options?.pollIntervalMs ?? 1000,
+          options?.viewOptions
+        );
     }
   }
 
@@ -622,6 +640,9 @@ export launchInteractiveGroomFun = (boardDir: String, model: Option<String>) =>
 
 export runControlLoopFun = (boardDir: String, maxTicks: Number) =>
   runControlLoop(boardDir, maxTicks)
+
+export runViewCommandFun = (boardDir: String, pollMs: Number) =>
+  runViewCommand(boardDir, pollMs)
 
 export runCliFun = () =>
   runCli()

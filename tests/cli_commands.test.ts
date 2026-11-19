@@ -17,6 +17,7 @@ import {
   runGroomCommand,
   runInitCommand,
   runReconcilerCommand,
+  runViewCommand,
   type CliCommand,
 } from "../src/cli/index.js";
 import type { DoctorReportTs } from "../src/services/doctor.js";
@@ -185,6 +186,40 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect((cmdDir as any).dir).toBe("/tmp/board");
     });
 
+    it("parses 'view' with dir and poll-interval options", () => {
+      // Default
+      const cmdDefault = parseCliArgs(["view"]);
+      expect(cmdDefault.command).toBe("view");
+      expect(cmdDefault.type).toBe("view");
+      expect((cmdDefault as any).dir).toBe(DEFAULT_BOARD_DIR);
+      expect((cmdDefault as any).help).toBe(false);
+
+      // With --dir
+      const cmdDir = parseCliArgs(["view", "--dir", "/tmp/view-board"]);
+      expect((cmdDir as any).dir).toBe("/tmp/view-board");
+
+      // With short flag -d
+      const cmdShort = parseCliArgs(["view", "-d", "/tmp/short-view"]);
+      expect((cmdShort as any).dir).toBe("/tmp/short-view");
+
+      // Positional path
+      const cmdPos = parseCliArgs(["view", "/tmp/pos-view"]);
+      expect((cmdPos as any).dir).toBe("/tmp/pos-view");
+
+      // With --poll-interval
+      const cmdPoll = parseCliArgs(["view", "--poll-interval", "500"]);
+      expect((cmdPoll as any).pollIntervalMs).toBe(500);
+
+      // Help flag
+      const cmdHelp = parseCliArgs(["view", "--help"]);
+      expect((cmdHelp as any).help).toBe(true);
+
+      // Unknown option
+      const cmdInvalid = parseCliArgs(["view", "--unknown-flag"]);
+      expect(cmdInvalid.command).toBe("invalid");
+      expect((cmdInvalid as any).subcommand).toBe("view");
+    });
+
     it("parses global help and unknown commands", () => {
       expect(parseCliArgs([]).command).toBe("help");
       expect(parseCliArgs(["--help"]).command).toBe("help");
@@ -250,6 +285,7 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect(help).toContain("init [--dir <path>] [--repo <url>]");
       expect(help).toContain("groom [--dir <path>]");
       expect(help).toContain("status [--dir <path>]");
+      expect(help).toContain("view [--dir <path>]");
     });
 
     it("returns command-specific options for subcommands", () => {
@@ -258,6 +294,7 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect(getHelpMessage("init")).toContain("--repo <url>");
       expect(getHelpMessage("groom")).toContain("--model <name>");
       expect(getHelpMessage("status")).toContain("Usage: slopboss2 status");
+      expect(getHelpMessage("view")).toContain("Usage: slopboss2 view");
     });
   });
 
@@ -369,6 +406,69 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect(exitCode).toBe(0);
     });
 
+    it("executes 'view' command and dispatches to runLiveView", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "TASKS.md"),
+        "# TASKS\n\n## Dev Agent 1 In Progress\n*Idle*\n\n## Dev Agent 2 In Progress\n*Idle*\n"
+      );
+      fs.writeFileSync(path.join(tempDir, "BACKLOG.md"), "# BACKLOG\n");
+      fs.writeFileSync(path.join(tempDir, "ARCHIVE.md"), "# ARCHIVE\n");
+
+      let ticked = false;
+      let outputCaptured = "";
+      const mockStdout = {
+        write: (str: string) => {
+          outputCaptured += str;
+          return true;
+        },
+      };
+      const mockStdin = {
+        on: () => {},
+        removeListener: () => {},
+        setRawMode: () => {},
+        resume: () => {},
+        pause: () => {},
+        setEncoding: () => {},
+      };
+
+      const result = await Effect.runPromise(
+        runCli(["view", "--dir", tempDir], {
+          pollIntervalMs: 50,
+          viewOptions: {
+            stdout: mockStdout,
+            stdin: mockStdin,
+            maxTicks: 1,
+            onTick: (state, output) => {
+              ticked = true;
+              expect(state.boardDir).toBe(tempDir);
+              expect(output).toContain("SLOPBOSS2 LIVE AGENT DASHBOARD");
+            },
+          },
+        })
+      );
+
+      expect(result).toBe(true);
+      expect(ticked).toBe(true);
+      expect(outputCaptured).toContain("SLOPBOSS2 LIVE AGENT DASHBOARD");
+    });
+
+    it("executes runViewCommand directly", async () => {
+      fs.writeFileSync(path.join(tempDir, "TASKS.md"), "# TASKS\n");
+      let ticked = false;
+      const res = await Effect.runPromise(
+        runViewCommand(tempDir, 50, {
+          stdout: { write: () => true },
+          stdin: { on: () => {}, removeListener: () => {} },
+          maxTicks: 1,
+          onTick: () => {
+            ticked = true;
+          },
+        })
+      );
+      expect(res).toBe(true);
+      expect(ticked).toBe(true);
+    });
+
     it("handles '--help' without errors", async () => {
       const res = await Effect.runPromise(runCli(["--help"]));
       expect(res.help).toBe(true);
@@ -407,6 +507,7 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect(stdout).toContain("run");
       expect(stdout).toContain("init");
       expect(stdout).toContain("groom");
+      expect(stdout).toContain("view");
     });
 
     it("runs binary with doctor command and prints diagnostic table", async () => {
