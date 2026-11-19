@@ -57,6 +57,10 @@ export enqueueMerge = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => e
   _ <- Queue.offer(queue, req)
   => true
 
+export enqueueMergeRequest = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => effect
+  res <- enqueueMerge(queue, req)
+  => res
+
 export processNextMerge = (queue: Queue.Queue<MergeRequest>, baseBranch: String) => effect
   req <- Queue.take(queue)
   res <- landMergeRequest(req, baseBranch)

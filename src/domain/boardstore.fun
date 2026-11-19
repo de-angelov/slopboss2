@@ -344,6 +344,28 @@ ts {
     return formatTasksDocument(doc, header);
   }
 
+  export function parseBacklogTasks(content: string): TaskBlock[] {
+    if (!content) return [];
+    const lines = content.split(/\r?\n/);
+    const tasks: TaskBlock[] = [];
+    let currentTaskLines: string[] | null = null;
+
+    for (const line of lines) {
+      if (/^###\s+/.test(line.trim())) {
+        if (currentTaskLines !== null) {
+          tasks.push(parseTaskBlockText(currentTaskLines.join("\n")));
+        }
+        currentTaskLines = [line];
+      } else if (currentTaskLines !== null) {
+        currentTaskLines.push(line);
+      }
+    }
+    if (currentTaskLines !== null) {
+      tasks.push(parseTaskBlockText(currentTaskLines.join("\n")));
+    }
+    return tasks;
+  }
+
   export function findTask(store: TasksDocument | BoardStore, taskId: string): Option.Option<TaskBlock> {
     const sections: MarkdownSection[] =
       "sections" in store && Array.isArray(store.sections)
@@ -360,6 +382,12 @@ ts {
         const found = sec.tasks.find((t) => t.id === taskId);
         if (found) return Option.some(found);
       }
+    }
+
+    if ("backlogContent" in store && (store as BoardStore).backlogContent) {
+      const bTasks = parseBacklogTasks((store as BoardStore).backlogContent);
+      const found = bTasks.find((t) => t.id === taskId);
+      if (found) return Option.some(found);
     }
 
     return Option.none();
@@ -459,6 +487,41 @@ ts {
           sec.tasks.splice(idx, 1);
           break;
         }
+      }
+    }
+
+    if (!movedTask && isBoardStore && (store as any).backlogContent) {
+      const bContent: string = (store as any).backlogContent;
+      const lines = bContent.split(/\r?\n/);
+      let foundStart = -1;
+      let foundEnd = -1;
+      let currentStart = -1;
+
+      for (let i = 0; i < lines.length; i++) {
+        if (/^###\s+/.test(lines[i].trim())) {
+          if (currentStart !== -1) {
+            const block = lines.slice(currentStart, i).join("\n");
+            if (new RegExp(`Task ID:\\s*${taskId}\\b`, "i").test(block)) {
+              foundStart = currentStart;
+              foundEnd = i;
+              movedTask = parseTaskBlockText(block);
+              break;
+            }
+          }
+          currentStart = i;
+        }
+      }
+      if (!movedTask && currentStart !== -1) {
+        const block = lines.slice(currentStart).join("\n");
+        if (new RegExp(`Task ID:\\s*${taskId}\\b`, "i").test(block)) {
+          foundStart = currentStart;
+          foundEnd = lines.length;
+          movedTask = parseTaskBlockText(block);
+        }
+      }
+      if (foundStart !== -1) {
+        lines.splice(foundStart, foundEnd - foundStart);
+        (store as any).backlogContent = lines.join("\n").trim() + "\n";
       }
     }
 
@@ -680,6 +743,9 @@ export schema BoardStore = {
 
 export parseTasksDocumentFun = (content: String) =>
   parseTasksDocument(content)
+
+export parseBacklogTasksFun = (content: String) =>
+  parseBacklogTasks(content)
 
 export formatTasksDocumentFun = (doc: TasksDocument) =>
   formatTasksDocument(doc)
