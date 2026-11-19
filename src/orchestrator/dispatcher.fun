@@ -132,16 +132,18 @@ getContentCompletedIds = (archiveContent: String): Array<String> => {
   matches1 = globalThis.Array.from(content.matchAll(bulletRx))
   initIds1: Array<String> = []
   ids1 = matches1 |> Array.reduce(initIds1, (acc, m) =>
-    match m[1]
-      | Some(id) => acc |> Array.append(id)
+    match Option.fromNullishOr(Reflect.get(m, 1))
+      | Some(id) => acc |> Array.append(globalThis.String(id))
+      | None => acc
       | _ => acc
   )
 
   matches2 = globalThis.Array.from(content.matchAll(taskRx))
   initIds2: Array<String> = []
   ids2 = matches2 |> Array.reduce(initIds2, (acc, m) =>
-    match m[1]
-      | Some(id) => acc |> Array.append(id)
+    match Option.fromNullishOr(Reflect.get(m, 1))
+      | Some(id) => acc |> Array.append(globalThis.String(id))
+      | None => acc
       | _ => acc
   )
 
@@ -432,7 +434,7 @@ export runReconcilerLoop = (config: ReconcilerConfig) => effect {
 
   hasExternalQueue = Option.isSome(Option.fromNullishOr(config.mergeQueue))
   internalQueue <- createMergeTrain(100)
-  resolvedQueue = match Option.fromNullishOr(config.mergeQueue)
+  resolvedQueue: Unknown = match Option.fromNullishOr(config.mergeQueue)
     | Some(q) => q
     | _ => internalQueue
 

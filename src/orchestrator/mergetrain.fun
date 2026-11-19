@@ -19,12 +19,22 @@ export schema MergeResult = {
 export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
   _ <- Console.log("[MERGE TRAIN] Processing landing for task: " + req.taskId + " on branch: " + req.branch)
 
-  res = match req.isZeroCommit
+  isZeroCommit = match Option.fromNullishOr(req.isZeroCommit)
+    | Some(z) => z #= true
+    | None => false
+    | _ => false
+
+  verificationOpt = match Option.fromNullishOr(req.verificationCmd)
+    | Some(v) => v
+    | _ => Option.none()
+
+  res = match isZeroCommit
     | true => effect {
       _ <- Console.log("[MERGE TRAIN] Zero-commit audit task detected. Bypassing git commit.")
-      _ <- match req.verificationCmd
+      _ <- match verificationOpt
         | Some(cmd) => Console.log("[MERGE TRAIN] Running verification: " + cmd)
         | None => Console.log("[MERGE TRAIN] No verification command specified.")
+        | _ => Console.log("[MERGE TRAIN] No verification command specified.")
       => {
         taskId: req.taskId,
         success: true,
@@ -34,9 +44,10 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
     }
     | false => effect {
       _ <- Console.log("[MERGE TRAIN] Squash-merging " + req.branch + " into " + baseBranch)
-      _ <- match req.verificationCmd
+      _ <- match verificationOpt
         | Some(cmd) => Console.log("[MERGE TRAIN] Running pre-push verification: " + cmd)
         | None => Console.log("[MERGE TRAIN] No verification command specified.")
+        | _ => Console.log("[MERGE TRAIN] No verification command specified.")
       _ <- Console.log("[MERGE TRAIN] Pushing squash commit to origin/" + baseBranch)
       => {
         taskId: req.taskId,
