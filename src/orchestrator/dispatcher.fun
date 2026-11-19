@@ -223,7 +223,8 @@ handleSessionCompletion = (isDone: Boolean, idle: IdleAgent, taskAssigned: TaskB
       verificationCmd: Option.none()
     }
 
-    _ <- submitMergeRequest(mergeQueueOpt, mergeReq, baseBranch)
+    landing <- landMergeRequest(mergeReq, baseBranch)
+    when (not landing.success) => currentSessions |> Array.append(createFailedSession(idle, taskAssigned, branchName, workspacePath))
     _archiveRes: Unknown = archiveTask(store, taskAssigned.id)
     _persistRes2: Unknown = persistBoardStoreSync(store)
     => currentSessions

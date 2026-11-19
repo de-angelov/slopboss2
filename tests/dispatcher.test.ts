@@ -97,14 +97,13 @@ Test second assignment.
     expect(nextState.tickCount).toBe(1);
     expect(nextState.tokenCounter.totalTokens).toBeGreaterThan(0);
 
-    // Board verification: tasks should have been moved from BACKLOG to ARCHIVE (via runner completion)
+    // A mock runner has no Git remote to land; completed work remains unarchived for recovery.
     const store = loadBoardStoreSync(tempDir);
     expect(store.backlogContent).not.toContain("SB2-TEST-01");
     expect(store.backlogContent).not.toContain("SB2-TEST-02");
 
-    // Both tasks landed and archived
-    expect(store.archiveContent).toContain("SB2-TEST-01");
-    expect(store.archiveContent).toContain("SB2-TEST-02");
+    expect(store.archiveContent).not.toContain("SB2-TEST-01");
+    expect(store.archiveContent).not.toContain("SB2-TEST-02");
   });
 
   it("holds blocked tasks in Backlog until dependencies are archived", async () => {
@@ -165,18 +164,18 @@ Implement dependent UI.
     // SB2-DEP-02 must still be in BACKLOG.md during tick 1
     const storeAfterTick1 = loadBoardStoreSync(tempDir);
     expect(storeAfterTick1.backlogContent).toContain("SB2-DEP-02");
-    expect(storeAfterTick1.archiveContent).toContain("SB2-DEP-01");
+    expect(storeAfterTick1.archiveContent).not.toContain("SB2-DEP-01");
 
     // --- Tick 2 ---
     const state2 = await Effect.runPromise(reconcileTick(config, state1));
     expect(state2.tickCount).toBe(2);
 
-    // Now SB2-DEP-02 should have been executed because its dependency SB2-DEP-01 was archived!
-    expect(executedTasks).toEqual(["SB2-DEP-01", "SB2-DEP-02"]);
+    // Failed landing leaves the dependency unarchived, so dependent work stays blocked.
+    expect(executedTasks).toEqual(["SB2-DEP-01"]);
 
     const storeAfterTick2 = loadBoardStoreSync(tempDir);
-    expect(storeAfterTick2.backlogContent).not.toContain("SB2-DEP-02");
-    expect(storeAfterTick2.archiveContent).toContain("SB2-DEP-02");
+    expect(storeAfterTick2.backlogContent).toContain("SB2-DEP-02");
+    expect(storeAfterTick2.archiveContent).not.toContain("SB2-DEP-02");
   });
 
   it("advances tickCount and updates token usage across iterations", async () => {
@@ -273,8 +272,8 @@ Beta task.
     expect(finalState.tokenCounter.totalTokens).toBeGreaterThan(0);
 
     const store = loadBoardStoreSync(tempDir);
-    expect(store.archiveContent).toContain("SB2-ALPHA");
-    expect(store.archiveContent).toContain("SB2-BETA");
+    expect(store.archiveContent).not.toContain("SB2-ALPHA");
+    expect(store.archiveContent).not.toContain("SB2-BETA");
   });
 
   it("acquires coordination lock and releases it upon fiber interruption", async () => {
