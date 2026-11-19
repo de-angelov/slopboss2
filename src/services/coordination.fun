@@ -49,14 +49,10 @@ handleValidLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir:
 
 handleExistingLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir: String) => effect {
   readAttempt <- fsService.readFileString(lockPath) |> Effect.option
-  _ <- match readAttempt
-    | None =>
-      logAndRemoveLock(fsService, lockPath, "Corrupted lock file detected")
-    | Some(raw) =>
-      parsed = tryParseLockFile(raw)
-      match parsed
-        | Some(lock) => handleValidLock(fsService, lockPath, boardDir, lock)
-        | None => logAndRemoveLock(fsService, lockPath, "Corrupted lock file detected")
+  parsed = readAttempt |> Option.flatMap(tryParseLockFile)
+  _ <- match parsed
+    | Some(lock) => handleValidLock(fsService, lockPath, boardDir, lock)
+    | None => logAndRemoveLock(fsService, lockPath, "Corrupted lock file detected")
   => Unit
 }
 
@@ -64,22 +60,15 @@ releaseOwnLock = (fsService: FileSystem.FileSystem, lockPath: String, currentPid
   lockExists <- fsService.exists(lockPath)
   _ <- match lockExists
     | false => Effect.void
-    | true =>
-      effect {
-        rawOption <- fsService.readFileString(lockPath) |> Effect.option
-        _ <- match rawOption
-          | Some(raw) =>
-            parsed = tryParseLockFile(raw)
-            match parsed
-              | Some(lock) =>
-                match
-                  | lock.pid #= currentPid and lock.timestamp #= currentTime =>
-                    fsService.remove(lockPath) |> Effect.ignore
-                  | _ => Effect.void
-              | _ => Effect.void
-          | _ => Effect.void
-        => Unit
-      }
+    | true => effect {
+      rawOption <- fsService.readFileString(lockPath) |> Effect.option
+      parsed = rawOption |> Option.flatMap(tryParseLockFile)
+      lock = parsed |> Option.getOrElse(() => ({ pid: 0, timestamp: 0 }))
+      _ <- match (Option.isSome(parsed) and lock.pid #= currentPid and lock.timestamp #= currentTime)
+        | true => fsService.remove(lockPath) |> Effect.ignore
+        | false => Effect.void
+      => Unit
+    }
   => Unit
 } |> Effect.ignore
 

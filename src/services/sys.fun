@@ -53,11 +53,7 @@ export safeSpawnSync = (cmd: Array<String>, envOpt: Unknown = Option.none(), cwd
     },
     "catch": (err: Unknown) => {
       errDecoded = Schema.decodeUnknownOption(NodeError)(err)
-      errMsg = match errDecoded
-        | Some(e) => match e.message
-          | Some(m) => m
-          | None => "" + err
-        | None => "" + err
+      errMsg = errDecoded |> Option.flatMap((e) => e.message) |> Option.getOrElse(() => "" + err)
       => {
         exitCode: 1,
         stdout: "",
@@ -130,16 +126,8 @@ export schema AccessOptions = {
 
 handleFsError = (method: String, p: String) => (err: Unknown) => {
   errDecoded = Schema.decodeUnknownOption(NodeError)(err)
-  errCode = match errDecoded
-    | Some(e) => match e.code
-      | Some(c) => c
-      | None => ""
-    | None => ""
-  syscallStr = match errDecoded
-    | Some(e) => match e.syscall
-      | Some(s) => s
-      | None => method
-    | None => method
+  errCode = errDecoded |> Option.flatMap((e) => e.code) |> Option.getOrElse(() => "")
+  syscallStr = errDecoded |> Option.flatMap((e) => e.syscall) |> Option.getOrElse(() => method)
   => match errCode
     | "ENOENT" => PlatformError.systemError({ _tag: "NotFound", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
     | "EACCES" => PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
@@ -154,16 +142,14 @@ handleFsError = (method: String, p: String) => (err: Unknown) => {
 
 calcAccessMode = (opt: Unknown = 0): Number => {
   optDecoded = Schema.decodeUnknownOption(AccessOptions)(opt)
-  r = match optDecoded
-    | Some(o) => match o.readable
-      | Some(true) => nodeFs.constants.R_OK
-      | _ => 0
-    | None => 0
-  w = match optDecoded
-    | Some(o) => match o.writable
-      | Some(true) => nodeFs.constants.W_OK
-      | _ => 0
-    | None => 0
+  rOpt = optDecoded |> Option.flatMap((o) => o.readable)
+  wOpt = optDecoded |> Option.flatMap((o) => o.writable)
+  r = match rOpt
+    | Some(true) => nodeFs.constants.R_OK
+    | _ => 0
+  w = match wOpt
+    | Some(true) => nodeFs.constants.W_OK
+    | _ => 0
   => r + w
 }
 
@@ -214,11 +200,7 @@ export SyncFileSystem = FileSystem.make({
   copy: (srcPath: String, destPath: String, opt: Unknown = 0) => Effect.try({
     "try": () => {
       optDecoded = Schema.decodeUnknownOption(CopyOptions)(opt)
-      forceVal = match optDecoded
-        | Some(o) => match o.overwrite
-          | Some(true) => true
-          | _ => false
-        | None => false
+      forceVal = optDecoded |> Option.flatMap((o) => o.overwrite) |> Option.map((enabled) => enabled #= true) |> Option.getOrElse(() => false)
       => nodeFs.cpSync(srcPath, destPath, { recursive: true, force: forceVal })
     },
     "catch": handleFsError("copy", srcPath)
@@ -249,11 +231,7 @@ export SyncFileSystem = FileSystem.make({
   makeDirectory: (p: String, opt: Unknown = 0) => Effect.try({
     "try": () => {
       optDecoded = Schema.decodeUnknownOption(MakeDirectoryOptions)(opt)
-      isRec = match optDecoded
-        | Some(o) => match o.recursive
-          | Some(true) => true
-          | _ => false
-        | None => false
+      isRec = optDecoded |> Option.flatMap((o) => o.recursive) |> Option.map((enabled) => enabled #= true) |> Option.getOrElse(() => false)
       => nodeFs.mkdirSync(p, { recursive: isRec })
     },
     "catch": handleFsError("makeDirectory", p)
@@ -261,11 +239,7 @@ export SyncFileSystem = FileSystem.make({
   makeTempDirectory: (opt: Unknown = 0) => Effect.try({
     "try": () => {
       optDecoded = Schema.decodeUnknownOption(MakeTempDirectoryOptions)(opt)
-      prefix = match optDecoded
-        | Some(o) => match o.prefix
-          | Some(pfx) => pfx
-          | None => "/tmp/"
-        | None => "/tmp/"
+      prefix = optDecoded |> Option.flatMap((o) => o.prefix) |> Option.getOrElse(() => "/tmp/")
       => nodeFs.mkdtempSync(prefix)
     },
     "catch": handleFsError("makeTempDirectory", "/tmp")
@@ -300,11 +274,7 @@ export SyncFileSystem = FileSystem.make({
   remove: (p: String, opt: Unknown = 0) => Effect.try({
     "try": () => {
       optDecoded = Schema.decodeUnknownOption(RemoveOptions)(opt)
-      isRec = match optDecoded
-        | Some(o) => match o.recursive
-          | Some(true) => true
-          | _ => false
-        | None => false
+      isRec = optDecoded |> Option.flatMap((o) => o.recursive) |> Option.map((enabled) => enabled #= true) |> Option.getOrElse(() => false)
       => nodeFs.rmSync(p, { recursive: isRec, force: true })
     },
     "catch": handleFsError("remove", p)

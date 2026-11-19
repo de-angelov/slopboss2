@@ -84,18 +84,12 @@ export resetCooldown = (cdRef: Ref.Ref<CooldownState>) => effect {
 
 export checkCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number) => effect {
   state <- Ref.get(cdRef)
-  isExpired = match state.inCooldown
-    | true => match (currentTimeMs >= state.untilMs)
-      | true => true
-      | false => false
-    | false => true
+  isExpired = not state.inCooldown or currentTimeMs >= state.untilMs
 
   _ <- match (state.inCooldown and isExpired)
     | true => clearCooldown(cdRef)
     | false => Effect.succeed(true)
 
-  active = match isExpired
-    | true => false
-    | false => true
+  active = not isExpired
   => active
 }
