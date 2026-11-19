@@ -58,6 +58,13 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
   when (not (baseCheck.exitCode #= 0) or not (branchCheck.exitCode #= 0)) => {
     taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Configured base branch or task branch does not exist on origin")
   }
+  // A prior attempt may have pushed successfully and then failed while the
+  // caller persisted board archival. Treat the task-specific landing commit as
+  // evidence that this request already landed, so retrying is idempotent.
+  landedRes = git(["log", "refs/remotes/origin/" + baseBranch, "--format=%H", "--grep=^" + req.taskId + ": landed$"], tempDir)
+  when (landedRes.exitCode #= 0 and not (landedRes.stdout |> String.trim |> String.isEmpty)) => {
+    taskId: req.taskId, success: true, commitHash: Option.some(landedRes.stdout |> String.trim |> String.split("\n") |> Array.head |> Option.getOrElse(() => "")), error: Option.none()
+  }
   checkoutRes = git(["checkout", "--quiet", "-B", baseBranch, "refs/remotes/origin/" + baseBranch], tempDir)
   when (not (checkoutRes.exitCode #= 0)) => {
     taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Cannot check out base branch: " + messageOf(checkoutRes))

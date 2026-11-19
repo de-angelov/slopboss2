@@ -44,4 +44,12 @@ describe("Antigravity (agy) Provider Service", () => {
     const event = Option.getOrThrow(eventOpt);
     expect(event._tag).toBe("SessionCompleted");
   });
+
+  it("requires valid structured completion evidence and ignores missing or malformed evidence", () => {
+    for (const line of ["", "completed", '{"done":"true"}', '{"status":completed}', '{"message":"done:true"}']) {
+      expect(Option.isSome(parseAgyLine(line))).toBe(false);
+    }
+    expect(Option.getOrThrow(parseAgyLine('{"done":true}'))._tag).toBe("SessionCompleted");
+    expect(Option.getOrThrow(parseAgyLine('{"status":"completed"}'))._tag).toBe("SessionCompleted");
+  });
 });

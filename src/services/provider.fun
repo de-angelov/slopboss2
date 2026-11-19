@@ -26,23 +26,24 @@ export buildInteractiveCommand = (model: Option<String>, prompt: String) =>
     | None => baseArgs
   => ["agy"] |> Array.appendAll(args)
 
+// Completion contract for the configured agy stream-json provider: accept a
+// valid JSON event with done: true or status: "completed". Assistant text and
+// a zero process exit are not completion evidence. The runner independently
+// rejects any session that also reports a usage limit or exits nonzero.
 export parseAgyLine = (line: String) =>
   trimmed = line |> String.trim
-  evt = match trimmed
-    | l when l |> String.includes("rate_limit") =>
-      Option.some(UsageLimitReached)
-    | l when l |> String.includes("usage_limit") =>
-      Option.some(UsageLimitReached)
-    | l when l |> String.includes("\"type\":\"assistant\"") =>
-      Option.some(AssistantMessage(l))
-    | l when l |> String.includes("\"content\"") =>
-      Option.some(AssistantMessage(l))
-    | l when l |> String.includes("\"total_tokens\"") =>
-      Option.some(TokenUpdate({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }))
-    | l when l |> String.includes("\"done\":true") =>
-      Option.some(SessionCompleted)
-    | l when l |> String.includes("\"status\":\"completed\"") =>
-      Option.some(SessionCompleted)
-    | _ =>
-      Option.none()
+  completionEvidence = Schema.Union([
+    Schema.Struct({ done: Schema.Literal(true) }),
+    Schema.Struct({ status: Schema.Literal("completed") })
+  ])
+  hasCompletionEvidence = Schema.decodeUnknownOption(Schema.fromJsonString(completionEvidence))(trimmed) |> Option.isSome
+  evt = match hasCompletionEvidence
+    | true => Option.some(SessionCompleted)
+    | false => match trimmed
+      | l when l |> String.includes("rate_limit") => Option.some(UsageLimitReached)
+      | l when l |> String.includes("usage_limit") => Option.some(UsageLimitReached)
+      | l when l |> String.includes("\"type\":\"assistant\"") => Option.some(AssistantMessage(l))
+      | l when l |> String.includes("\"content\"") => Option.some(AssistantMessage(l))
+      | l when l |> String.includes("\"total_tokens\"") => Option.some(TokenUpdate({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }))
+      | _ => Option.none()
   => evt
