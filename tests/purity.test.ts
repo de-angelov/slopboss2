@@ -399,32 +399,70 @@ ts {
 
     it("verifies pure production files in src/ pass purity check", () => {
       const pureFiles = [
-        "src/services/tokens.fun",
-        "src/services/prompt.fun",
-        "src/services/coordination.fun",
-        "src/domain/boardstore.fun",
-        "src/domain/dag.fun",
-        "src/domain/board.fun",
-        "src/services/runner.fun",
-        "src/services/doctor.fun",
-        "src/services/setup.fun",
-        "src/services/provider.fun",
-        "src/services/git.fun",
-        "src/ui/dashboard.fun",
+        "src/cli/bin.fun",
         "src/cli/index.fun",
         "src/cli/view.fun",
-        "src/orchestrator/reconcile.fun",
+        "src/domain/board.fun",
+        "src/domain/boardstore.fun",
+        "src/domain/dag.fun",
         "src/orchestrator/dispatcher.fun",
         "src/orchestrator/mergetrain.fun",
+        "src/orchestrator/reconcile.fun",
+        "src/services/coordination.fun",
+        "src/services/doctor.fun",
+        "src/services/git.fun",
+        "src/services/prompt.fun",
+        "src/services/provider.fun",
+        "src/services/runner.fun",
+        "src/services/setup.fun",
+        "src/services/sys.fun",
+        "src/services/tokens.fun",
+        "src/ui/dashboard.fun",
       ];
 
       for (const file of pureFiles) {
-        if (fs.existsSync(file)) {
-          const violations = checkFile(file);
-          expect(violations).toEqual([]);
-        }
+        expect(fs.existsSync(file)).toBe(true);
+        const violations = checkFile(file);
+        expect(violations).toEqual([]);
       }
     });
+
+    it("verifies strict zero-TS invariant across src/: zero .ts or .js files exist", () => {
+      function findTsJsFiles(dir: string): string[] {
+        const found: string[] = [];
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            found.push(...findTsJsFiles(fullPath));
+          } else if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".js"))) {
+            found.push(fullPath);
+          }
+        }
+        return found;
+      }
+
+      const forbiddenFiles = findTsJsFiles("src");
+      expect(forbiddenFiles).toEqual([]);
+      expect(fs.existsSync("src/services/platform.ts")).toBe(false);
+      expect(fs.existsSync("src/cli/bin.ts")).toBe(false);
+    });
+
+    it(
+      "verifies funscript check src/ --no-ts passes cleanly with 0 errors",
+      async () => {
+        const proc = Bun.spawn(["bun", "run", "check"], {
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const exitCode = await proc.exited;
+        const stdout = await new Response(proc.stdout).text();
+
+        expect(exitCode).toBe(0);
+        expect(stdout).toContain("Checked 19 files successfully (0 errors)");
+      },
+      30000
+    );
   });
 
   describe("CLI Execution via Subprocess", () => {
