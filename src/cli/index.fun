@@ -93,7 +93,6 @@ export schema HelpResult = {
 export error CliCommandError(message: String)
 
 export getEnvVar = (name: String): Option<String> =>
-export getEnvVar = (name: String): Option<String> =>
   Option.fromNullishOr(process) |> Option.flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "env"))) |> Option.flatMap((env) => Option.fromNullishOr(Reflect.get(env, name))) |> Option.map((val) => "" + val)
 
 export getProcessArgv = (): Array<String> =>
@@ -562,7 +561,7 @@ fallbackViewOpts = () => ({})
 
 safelyUnrefProcess = (procObj: Any, proc: Any) => {
   unrefFn: Any = Reflect.get(procObj, "unref")
-  when (not Predicate.isFunction(unrefFn)) => globalThis.undefined
+  when (not Predicate.isFunction(unrefFn)) => Option.none()
   => Reflect.apply(unrefFn, proc, [])
 }
 
@@ -576,21 +575,21 @@ runReconcilerDetached = (dir: String, rawOptsObj: Any) => effect {
     detached: true,
     stdio: ["ignore", "ignore", "ignore"]
   }
-  proc: Any = Reflect.apply(spawnFnActual, globalThis.undefined, [execArgs, spawnOpts])
-  procObj: Any = globalThis.Object(proc)
+  proc: Any = Reflect.apply(spawnFnActual, Option.none(), [execArgs, spawnOpts])
+  procObj: Any = proc
   _unused = safelyUnrefProcess(procObj, proc)
   procPid: Unknown = Reflect.get(procObj, "pid")
-  _ <- Console.log("[SLOPBOSS2] Started reconciler daemon in background (PID: " + globalThis.String(procPid) + ")")
+  _ <- Console.log("[SLOPBOSS2] Started reconciler daemon in background (PID: " + ("" + procPid) + ")")
   => { detached: true, pid: procPid }
 }
 
 runReconcilerForeground = (dir: String, rawOptsObj: Any, maxTicks?: Number, pollIntervalMs?: Number) => effect {
   _ <- Console.log("[SLOPBOSS2] Starting dispatcher reconciler loop for board: " + dir)
   rawOptsPoll: Any = Reflect.get(rawOptsObj, "pollIntervalMs")
-  pollVal = Option.fromNullishOr(pollIntervalMs) |> Option.orElse(() => Option.fromNullishOr(rawOptsPoll)) |> Option.map((p) => globalThis.Number(p)) |> Option.getOrElse(() => 1000)
+  pollVal = Option.fromNullishOr(pollIntervalMs) |> Option.orElse(() => Option.fromNullishOr(rawOptsPoll)) |> Option.flatMap((p) => Number.parse("" + p)) |> Option.getOrElse(() => 1000)
 
   rawOptsIter: Any = Reflect.get(rawOptsObj, "maxIterations")
-  iterVal = Option.fromNullishOr(maxTicks) |> Option.orElse(() => Option.fromNullishOr(rawOptsIter)) |> Option.map((m) => globalThis.Number(m)) |> Option.getOrElse(() => 0)
+  iterVal = Option.fromNullishOr(maxTicks) |> Option.orElse(() => Option.fromNullishOr(rawOptsIter)) |> Option.flatMap((m) => Number.parse("" + m)) |> Option.getOrElse(() => 0)
 
   rawMock: Any = Reflect.get(rawOptsObj, "mockRunner")
   mockOpt = Option.fromNullishOr(rawMock) |> Option.map((m) => m #= true)
@@ -695,7 +694,7 @@ runViewCommandWithOpts = (cmd: Any, options?: Any) => {
   dirStr = Option.fromNullishOr(Reflect.get(obj, "dir")) |> Option.map((d) => "" + d) |> Option.getOrElse(() => DEFAULT_BOARD_DIR)
   rawCmdPoll: Option<Any> = Option.fromNullishOr(Reflect.get(obj, "pollIntervalMs"))
   rawOptsPoll: Option<Any> = Option.fromNullishOr(Reflect.get(rawOpts, "pollIntervalMs"))
-  pollValNum = rawCmdPoll |> Option.orElse(() => rawOptsPoll) |> Option.map((p) => Number(p)) |> Option.getOrElse(() => 1000)
+  pollValNum = rawCmdPoll |> Option.orElse(() => rawOptsPoll) |> Option.flatMap((p) => Number.parse("" + p)) |> Option.getOrElse(() => 1000)
   viewOptsRaw: Option<Any> = Option.fromNullishOr(Reflect.get(rawOpts, "viewOptions"))
   viewOpts: LiveViewOptions = match viewOptsRaw
     | Some(v) => v

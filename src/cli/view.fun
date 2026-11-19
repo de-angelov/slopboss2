@@ -173,20 +173,21 @@ export extractOption = (opt: Any, fallback: Unknown): Unknown => {
 }
 
 isPositiveNumber = (val: Unknown): Boolean => {
-  num: Number = Number(val)
+  num = Number.parse("" + val) |> Option.getOrElse(() => 0)
   when (num > 0) => true
   => false
 }
 
 extractFromOption = (opt: Any): Number => {
-  num: Number = Number(Option.getOrElse(opt, () => 0))
+  raw = Option.getOrElse(opt, () => 0)
+  num = Number.parse("" + raw) |> Option.getOrElse(() => 0)
   when (num > 0) => num
   => Infinity
 }
 
 export extractMaxTicks = (opt: Any): Number => {
   when (Option.isOption(opt)) => extractFromOption(opt)
-  when (Predicate.isNotNullish(opt) and isPositiveNumber(opt)) => Number(opt)
+  when (Predicate.isNotNullish(opt) and isPositiveNumber(opt)) => (Number.parse("" + opt) |> Option.getOrElse(() => Infinity))
   => Infinity
 }
 
