@@ -4,14 +4,14 @@
   "description": "Autonomous orchestrator for board-driven, multi-agent software development (Bun + FunScript rewrite)",
   "type": "module",
   "bin": {
-    "slopboss2": "./src/cli/bin.ts"
+    "slopboss2": "./src/cli/bin.fun"
   },
   "scripts": {
     "build": "bun run scripts/check-purity.ts && funscript build src/cli/index.fun src/cli/view.fun src/orchestrator/dispatcher.fun --outDir dist --sourcemap",
     "check": "funscript check src/ --no-ts",
     "typecheck": "funscript check src/ --no-ts",
     "test": "bun run scripts/check-purity.ts && bun test",
-    "start": "bun run src/cli/bin.ts"
+    "start": "bun run src/cli/bin.fun"
   },
   "dependencies": {
     "@effect/platform": "^0.97.2",
