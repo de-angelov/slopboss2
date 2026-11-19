@@ -8,8 +8,8 @@
   },
   "scripts": {
     "build": "bun run scripts/check-purity.ts && funscript build src/cli/index.fun src/cli/view.fun src/orchestrator/dispatcher.fun --outDir dist --sourcemap",
-    "check": "funscript check src/ --no-ts",
-    "typecheck": "funscript check src/ --no-ts",
+    "check": "funscript check src/ --no-ts --no-global-this",
+    "typecheck": "funscript check src/ --no-ts --no-global-this",
     "test": "bun run scripts/check-purity.ts && bun run check && bun test",
     "start": "bun run src/cli/bin.fun"
   },

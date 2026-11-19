@@ -437,14 +437,14 @@ export runSetupFun = (boardDir: String, repoUrl: String) => runSetup(boardDir, r
 
 fallbackSpawnFn = () => Bun.spawn
 
-resolveModelOption = (modelOpt: Option<Any>): Option<String> =>
-  match modelOpt
-    | Some(m) => match Option.isOption(m)
-        | true => m
-        | false => Option.some("" + m)
-        | _ => Option.none()
-    | None => Option.none()
+normalizeModelOption = (model: Any): Option<String> =>
+  match Option.isOption(model)
+    | true => model
+    | false => Option.some("" + model)
     | _ => Option.none()
+
+resolveModelOption = (modelOpt: Option<Any>): Option<String> =>
+  Option.flatMap(modelOpt, normalizeModelOption)
 readBacklogTextWorkflow = (boardDir: String) => effect {
   fileObj = Bun.file(boardDir + "/BACKLOG.md")
   exists <- Effect.promise(() => fileObj.exists())
@@ -695,7 +695,7 @@ boardList = (dir: String) => effect {
 }
 
 boardSet = (dir: String, id: String, status: String) => effect {
-  updated = updateTaskStatus(loadBoardStoreSync(dir), id, status)
+  updated: Unknown = updateTaskStatus(loadBoardStoreSync(dir), id, status)
   _ <- Console.log("Updated " + id + " to " + status)
   => updated
 }

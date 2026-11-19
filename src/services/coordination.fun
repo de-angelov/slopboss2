@@ -56,6 +56,11 @@ handleExistingLock = (fsService: FileSystem.FileSystem, lockPath: String, boardD
   => Unit
 }
 
+removeLockIfOwned = (fsService: FileSystem.FileSystem, lockPath: String, parsed: Option<BoardLock>, lock: BoardLock, currentPid: Number, currentTime: Number) =>
+  match (Option.isSome(parsed) and lock.pid #= currentPid and lock.timestamp #= currentTime)
+    | true => fsService.remove(lockPath) |> Effect.ignore
+    | false => Effect.void
+
 releaseOwnLock = (fsService: FileSystem.FileSystem, lockPath: String, currentPid: Number, currentTime: Number) => effect {
   lockExists <- fsService.exists(lockPath)
   _ <- match lockExists
@@ -64,9 +69,7 @@ releaseOwnLock = (fsService: FileSystem.FileSystem, lockPath: String, currentPid
       rawOption <- fsService.readFileString(lockPath) |> Effect.option
       parsed = rawOption |> Option.flatMap(tryParseLockFile)
       lock = parsed |> Option.getOrElse(() => ({ pid: 0, timestamp: 0 }))
-      _ <- match (Option.isSome(parsed) and lock.pid #= currentPid and lock.timestamp #= currentTime)
-        | true => fsService.remove(lockPath) |> Effect.ignore
-        | false => Effect.void
+      _ <- removeLockIfOwned(fsService, lockPath, parsed, lock, currentPid, currentTime)
       => Unit
     }
   => Unit

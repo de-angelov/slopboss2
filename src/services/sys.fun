@@ -16,15 +16,18 @@ export schema NodeError = {
   message?: String
 }
 
+fallbackCustomEnv = (envOpt: Unknown): Any =>
+  match Option.fromNullishOr(envOpt)
+    | Some(e) => e
+    | None => ({})
+    | _ => ({})
+
 export safeSpawnSync = (cmd: Array<String>, envOpt: Unknown = Option.none(), cwd: String = ""): SafeSpawnResult => {
   eff = Effect.try({
     "try": () => {
       customEnv: Any = match envOpt
         | Some(e) => e
-        | None => match Option.fromNullishOr(envOpt)
-          | Some(e) => e
-          | None => ({})
-          | _ => ({})
+        | None => fallbackCustomEnv(envOpt)
         | _ => ({})
       mergedEnv: Any = { ...process.env, ...customEnv }
       opts = match cwd #! ""
