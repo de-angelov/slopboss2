@@ -187,10 +187,10 @@ makeDirInfo = (sizeNum: Number) => makeBaseInfo("Directory", sizeNum)
 makeFileInfo = (sizeNum: Number) => makeBaseInfo("File", sizeNum)
 makeUnknownInfo = (sizeNum: Number) => makeBaseInfo("Unknown", sizeNum)
 
-makeFileStatInfo = (s: Any) => {
-  when (s.isDirectory()) => makeDirInfo(s.size)
-  when (s.isFile()) => makeFileInfo(s.size)
-  => makeUnknownInfo(s.size)
+makeFileStatInfo = (isDir: Boolean, isFile: Boolean, sizeNum: Number) => {
+  when (isDir) => makeDirInfo(sizeNum)
+  when (isFile) => makeFileInfo(sizeNum)
+  => makeUnknownInfo(sizeNum)
 }
 
 makeDirEntry = (name: String, isDir: Boolean, isFile: Boolean) => {
@@ -235,7 +235,7 @@ export SyncFileSystem = FileSystem.make({
   lstat: (p: String) => Effect.try({
     "try": () => {
       s = nodeFs.lstatSync(p)
-      => makeFileStatInfo(s)
+      => makeFileStatInfo(s.isDirectory(), s.isFile(), s.size)
     },
     "catch": handleFsError("lstat", p)
   }),
@@ -309,7 +309,7 @@ export SyncFileSystem = FileSystem.make({
   stat: (p: String) => Effect.try({
     "try": () => {
       s = nodeFs.statSync(p)
-      => makeFileStatInfo(s)
+      => makeFileStatInfo(s.isDirectory(), s.isFile(), s.size)
     },
     "catch": handleFsError("stat", p)
   }),
