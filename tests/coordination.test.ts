@@ -9,6 +9,7 @@ import {
   getLockPath,
   isPidAlive,
 } from "../src/services/coordination.js";
+import { readCoordinationReport, writeCoordinationReport } from "../src/services/coordination_report.js";
 
 describe("Board File Lock & Stale Lease Recovery", () => {
   let tempDir: string;
@@ -21,6 +22,18 @@ describe("Board File Lock & Stale Lease Recovery", () => {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("validates and atomically persists only the current session's coordination report", async () => {
+    const reportPath = path.join(tempDir, "session", "result.json");
+    const invalid = await Effect.runPromise(Effect.flip(writeCoordinationReport(reportPath, { status: "later", summary: "no" })));
+    expect(String(invalid)).toContain("status must be acted, idle, or blocked");
+    expect(fs.existsSync(reportPath)).toBe(false);
+
+    const expected = { status: "blocked", summary: "board command failed" };
+    await Effect.runPromise(writeCoordinationReport(reportPath, expected));
+    expect(JSON.parse(fs.readFileSync(reportPath, "utf8"))).toEqual(expected);
+    expect(await Effect.runPromise(readCoordinationReport(reportPath))).toEqual(expected);
   });
 
   it("checks PID liveness correctly", () => {
