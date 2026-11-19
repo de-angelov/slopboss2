@@ -145,6 +145,7 @@ ts {
           "Options:",
           "  -d, --dir <path>      Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
           "  --detach              Run reconciler process in the background",
+          "  --iterations <n>      Number of reconciliation iterations before exiting (alias for max-ticks)",
           "  --max-ticks <n>       Maximum ticks before exiting (0 for infinite)",
           "  --poll-interval <ms>  Milliseconds between reconciliation ticks",
           "  -h, --help            Show help for run command",
@@ -273,13 +274,14 @@ ts {
               detach: { type: "boolean" },
               "max-ticks": { type: "string" },
               maxTicks: { type: "string" },
+              iterations: { type: "string" },
               "poll-interval": { type: "string" },
               pollInterval: { type: "string" },
               help: { type: "boolean", short: "h" },
             },
             allowPositionals: true,
           });
-          const maxTicksRaw = (values["max-ticks"] || values["maxTicks"]) as string | undefined;
+          const maxTicksRaw = (values.iterations || values["max-ticks"] || values["maxTicks"]) as string | undefined;
           const pollIntervalRaw = (values["poll-interval"] || values["pollInterval"]) as string | undefined;
           return {
             command: "run",
