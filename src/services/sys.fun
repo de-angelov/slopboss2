@@ -1,4 +1,4 @@
-import { Array, Effect, FileSystem, Layer, Option, Path, String } from "effect"
+import { Array, ByteSize, Effect, FileSystem, Layer, Option, Path, Schema, Stream, String } from "effect"
 import * as PlatformError from "effect/PlatformError"
 import * as nodeFs from "node:fs"
 
@@ -10,19 +10,27 @@ export schema SafeSpawnResult = {
   threw: Boolean
 }
 
-export safeSpawnSync = (cmd: Array<String>, envOpt: Any = Option.none(), cwd: String = ""): SafeSpawnResult => {
+export schema NodeError = {
+  code?: String
+  syscall?: String
+  message?: String
+}
+
+export safeSpawnSync = (cmd: Array<String>, envOpt: Unknown = Option.none(), cwd: String = ""): SafeSpawnResult => {
   eff = Effect.try({
     "try": () => {
       opts: Any = {}
-      _cwd = match (cwd #! "")
+      match cwd #! ""
         | true => globalThis.Object.assign(opts, { cwd: cwd })
         | false => 0
-      _env = match (Option.isSome(envOpt))
-        | true => globalThis.Object.assign(opts, { env: globalThis.Object.assign({}, globalThis.process.env, Option.getOrThrow(envOpt)) })
-        | false => match (globalThis.Boolean(envOpt) and not Option.isNone(envOpt))
+      match envOpt
+        | Some(e) => globalThis.Object.assign(opts, { env: globalThis.Object.assign({}, globalThis.process.env, e) })
+        | None => 0
+        | _ => match globalThis.Boolean(envOpt)
           | true => globalThis.Object.assign(opts, { env: globalThis.Object.assign({}, globalThis.process.env, envOpt) })
           | false => 0
-      proc = globalThis.Bun.spawnSync(cmd, opts)
+      cmdArray = globalThis.Array.from(cmd)
+      proc = globalThis.Bun.spawnSync(cmdArray, opts)
       rawOut = match (globalThis.Boolean(proc.stdout))
         | true => proc.stdout.toString()
         | false => ""
@@ -44,10 +52,13 @@ export safeSpawnSync = (cmd: Array<String>, envOpt: Any = Option.none(), cwd: St
         threw: false
       }
     },
-    "catch": (err: Any) => {
-      errMsg = match (globalThis.Boolean(err) and globalThis.Boolean(err.message))
-        | true => globalThis.String(err.message)
-        | false => globalThis.String(err)
+    "catch": (err: Unknown) => {
+      errDecoded = Schema.decodeUnknownOption(NodeError)(err)
+      errMsg = match errDecoded
+        | Some(e) => match e.message
+          | Some(m) => m
+          | None => globalThis.String(err)
+        | None => globalThis.String(err)
       => {
         exitCode: 1,
         stdout: "",
@@ -95,53 +106,108 @@ export runGitCommandSync = (args: Array<String>, cwd: String = ""): GitSubproces
   }
 }
 
-handleFsError = (method: String, p: String) => (err: Any) => {
-  errCode = match (globalThis.Boolean(err) and globalThis.Boolean(err.code))
-    | true => err.code
-    | false => ""
-  reason = match errCode
-    | "ENOENT" => "NotFound"
-    | "EACCES" => "PermissionDenied"
-    | "EPERM" => "PermissionDenied"
-    | "EEXIST" => "AlreadyExists"
-    | "EISDIR" => "BadResource"
-    | "ENOTDIR" => "BadResource"
-    | "ELOOP" => "BadResource"
-    | "EBUSY" => "Busy"
-    | _ => "Unknown"
-  syscallStr = match (globalThis.Boolean(err) and globalThis.Boolean(err.syscall))
-    | true => err.syscall
-    | false => method
-  => PlatformError.systemError({
-    _tag: reason,
-    module: "FileSystem",
-    method: method,
-    pathOrDescriptor: p,
-    syscall: syscallStr,
-    cause: err
-  })
+export schema CopyOptions = {
+  overwrite?: Boolean
 }
 
-calcAccessMode = (opt: Any): Number => {
-  r = match (globalThis.Boolean(opt) and globalThis.Boolean(opt.readable))
-    | true => nodeFs.constants.R_OK
-    | false => 0
-  w = match (globalThis.Boolean(opt) and globalThis.Boolean(opt.writable))
-    | true => nodeFs.constants.W_OK
-    | false => 0
+export schema MakeDirectoryOptions = {
+  recursive?: Boolean
+  mode?: Number
+}
+
+export schema MakeTempDirectoryOptions = {
+  prefix?: String
+  directory?: String
+}
+
+export schema RemoveOptions = {
+  recursive?: Boolean
+}
+
+export schema AccessOptions = {
+  readable?: Boolean
+  writable?: Boolean
+}
+
+handleFsError = (method: String, p: String) => (err: Unknown) => {
+  errDecoded = Schema.decodeUnknownOption(NodeError)(err)
+  errCode = match errDecoded
+    | Some(e) => match e.code
+      | Some(c) => c
+      | None => ""
+    | None => ""
+  syscallStr = match errDecoded
+    | Some(e) => match e.syscall
+      | Some(s) => s
+      | None => method
+    | None => method
+  => match errCode
+    | "ENOENT" => PlatformError.systemError({ _tag: "NotFound", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+    | "EACCES" => PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+    | "EPERM" => PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+    | "EEXIST" => PlatformError.systemError({ _tag: "AlreadyExists", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+    | "EISDIR" => PlatformError.systemError({ _tag: "BadResource", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+    | "ENOTDIR" => PlatformError.systemError({ _tag: "BadResource", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+    | "ELOOP" => PlatformError.systemError({ _tag: "BadResource", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+    | "EBUSY" => PlatformError.systemError({ _tag: "Busy", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+    | _ => PlatformError.systemError({ _tag: "Unknown", module: "FileSystem", method: method, pathOrDescriptor: p, syscall: syscallStr, cause: err })
+}
+
+calcAccessMode = (opt: Unknown = 0): Number => {
+  optDecoded = Schema.decodeUnknownOption(AccessOptions)(opt)
+  r = match optDecoded
+    | Some(o) => match o.readable
+      | Some(true) => nodeFs.constants.R_OK
+      | _ => 0
+    | None => 0
+  w = match optDecoded
+    | Some(o) => match o.writable
+      | Some(true) => nodeFs.constants.W_OK
+      | _ => 0
+    | None => 0
   => r + w
 }
 
+makeBaseInfo = (t: ("Directory" | "File" | "Unknown"), sizeNum: Number) => ({
+  type: t,
+  mtime: Option.none(),
+  atime: Option.none(),
+  birthtime: Option.none(),
+  dev: globalThis.BigInt(0),
+  ino: Option.none(),
+  mode: 0,
+  nlink: Option.none(),
+  uid: Option.none(),
+  gid: Option.none(),
+  rdev: Option.none(),
+  size: ByteSize.bytes(sizeNum),
+  blksize: Option.none(),
+  blocks: Option.none()
+})
+
+makeDirInfo = (sizeNum: Number) => makeBaseInfo("Directory", sizeNum)
+makeFileInfo = (sizeNum: Number) => makeBaseInfo("File", sizeNum)
+makeUnknownInfo = (sizeNum: Number) => makeBaseInfo("Unknown", sizeNum)
+
+makeDirEntry = (name: String, isDir: Boolean, isFile: Boolean) => match isDir
+  | true => { name: name, type: "Directory" }
+  | false => match isFile
+    | true => { name: name, type: "File" }
+    | false => { name: name, type: "Unknown" }
+
 export SyncFileSystem = FileSystem.make({
-  access: (p: String, opt: Any) => Effect.try({
+  access: (p: String, opt: Unknown = 0) => Effect.try({
     "try": () => nodeFs.accessSync(p, calcAccessMode(opt)),
     "catch": handleFsError("access", p)
   }),
-  copy: (srcPath: String, destPath: String, opt: Any) => Effect.try({
+  copy: (srcPath: String, destPath: String, opt: Unknown = 0) => Effect.try({
     "try": () => {
-      forceVal = match (globalThis.Boolean(opt) and globalThis.Boolean(opt.overwrite))
-        | true => true
-        | false => false
+      optDecoded = Schema.decodeUnknownOption(CopyOptions)(opt)
+      forceVal = match optDecoded
+        | Some(o) => match o.overwrite
+          | Some(true) => true
+          | _ => false
+        | None => false
       => nodeFs.cpSync(srcPath, destPath, { recursive: true, force: forceVal })
     },
     "catch": handleFsError("copy", srcPath)
@@ -165,32 +231,34 @@ export SyncFileSystem = FileSystem.make({
   lstat: (p: String) => Effect.try({
     "try": () => {
       s = nodeFs.lstatSync(p)
-      t = match s.isDirectory()
-        | true => "Directory"
+      => match s.isDirectory()
+        | true => makeDirInfo(s.size)
         | false => match s.isFile()
-          | true => "File"
-          | false => "Unknown"
-      => {
-        type: t,
-        size: globalThis.BigInt(s.size)
-      }
+          | true => makeFileInfo(s.size)
+          | false => makeUnknownInfo(s.size)
     },
     "catch": handleFsError("lstat", p)
   }),
-  makeDirectory: (p: String, opt: Any) => Effect.try({
+  makeDirectory: (p: String, opt: Unknown = 0) => Effect.try({
     "try": () => {
-      isRec = match (globalThis.Boolean(opt) and globalThis.Boolean(opt.recursive))
-        | true => true
-        | false => false
+      optDecoded = Schema.decodeUnknownOption(MakeDirectoryOptions)(opt)
+      isRec = match optDecoded
+        | Some(o) => match o.recursive
+          | Some(true) => true
+          | _ => false
+        | None => false
       => nodeFs.mkdirSync(p, { recursive: isRec })
     },
     "catch": handleFsError("makeDirectory", p)
   }),
-  makeTempDirectory: (opt: Any) => Effect.try({
+  makeTempDirectory: (opt: Unknown = 0) => Effect.try({
     "try": () => {
-      prefix = match (globalThis.Boolean(opt) and globalThis.Boolean(opt.prefix))
-        | true => opt.prefix
-        | false => "/tmp/"
+      optDecoded = Schema.decodeUnknownOption(MakeTempDirectoryOptions)(opt)
+      prefix = match optDecoded
+        | Some(o) => match o.prefix
+          | Some(pfx) => pfx
+          | None => "/tmp/"
+        | None => "/tmp/"
       => nodeFs.mkdtempSync(prefix)
     },
     "catch": handleFsError("makeTempDirectory", "/tmp")
@@ -202,6 +270,13 @@ export SyncFileSystem = FileSystem.make({
   readDirectory: (p: String) => Effect.try({
     "try": () => nodeFs.readdirSync(p),
     "catch": handleFsError("readDirectory", p)
+  }),
+  readDirectoryEntries: (p: String) => Effect.try({
+    "try": () => {
+      entries = nodeFs.readdirSync(p, { withFileTypes: true })
+      => entries |> Array.map((e) => makeDirEntry(e.name, e.isDirectory(), e.isFile()))
+    },
+    "catch": handleFsError("readDirectoryEntries", p)
   }),
   readFile: (p: String) => Effect.try({
     "try": () => nodeFs.readFileSync(p),
@@ -215,11 +290,14 @@ export SyncFileSystem = FileSystem.make({
     "try": () => nodeFs.realpathSync(p),
     "catch": handleFsError("realPath", p)
   }),
-  remove: (p: String, opt: Any) => Effect.try({
+  remove: (p: String, opt: Unknown = 0) => Effect.try({
     "try": () => {
-      isRec = match (globalThis.Boolean(opt) and globalThis.Boolean(opt.recursive))
-        | true => true
-        | false => false
+      optDecoded = Schema.decodeUnknownOption(RemoveOptions)(opt)
+      isRec = match optDecoded
+        | Some(o) => match o.recursive
+          | Some(true) => true
+          | _ => false
+        | None => false
       => nodeFs.rmSync(p, { recursive: isRec, force: true })
     },
     "catch": handleFsError("remove", p)
@@ -231,15 +309,11 @@ export SyncFileSystem = FileSystem.make({
   stat: (p: String) => Effect.try({
     "try": () => {
       s = nodeFs.statSync(p)
-      t = match s.isDirectory()
-        | true => "Directory"
+      => match s.isDirectory()
+        | true => makeDirInfo(s.size)
         | false => match s.isFile()
-          | true => "File"
-          | false => "Unknown"
-      => {
-        type: t,
-        size: globalThis.BigInt(s.size)
-      }
+          | true => makeFileInfo(s.size)
+          | false => makeUnknownInfo(s.size)
     },
     "catch": handleFsError("stat", p)
   }),
@@ -247,16 +321,16 @@ export SyncFileSystem = FileSystem.make({
     "try": () => nodeFs.symlinkSync(srcPath, destPath),
     "catch": handleFsError("symlink", srcPath)
   }),
-  truncate: (p: String, len: Number) => Effect.try({
+  truncate: (p: String, len?: Number) => Effect.try({
     "try": () => nodeFs.truncateSync(p, len),
     "catch": handleFsError("truncate", p)
   }),
-  utimes: (p: String, a: Any, m: Any) => Effect.try({
+  utimes: (p: String, a: Date | Number, m: Date | Number) => Effect.try({
     "try": () => nodeFs.utimesSync(p, a, m),
     "catch": handleFsError("utimes", p)
   }),
-  watch: () => Effect.die("watch not implemented in SyncFileSystem"),
-  writeFile: (p: String, data: Any) => Effect.try({
+  watch: (p: String, opt: Unknown = 0) => Stream.die("watch not implemented in SyncFileSystem"),
+  writeFile: (p: String, data: Uint8Array) => Effect.try({
     "try": () => nodeFs.writeFileSync(p, data),
     "catch": handleFsError("writeFile", p)
   })
@@ -266,6 +340,7 @@ export SyncServices = {
   layer: Layer.merge(Layer.succeed(FileSystem.FileSystem, SyncFileSystem), Path.layer)
 }
 
-export runSyncWithPlatform = (effectVal: Any): Any => {
-  => Effect.runSync(effectVal |> Effect.provide(SyncServices.layer))
+export runSyncWithPlatform = (effectVal: Effect.Effect<Any, Any, FileSystem.FileSystem | Path.Path>): Any => {
+  provided = effectVal |> Effect.provide(SyncServices.layer)
+  => Effect.runSync(provided)
 }

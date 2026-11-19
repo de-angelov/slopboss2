@@ -148,9 +148,7 @@ export ensureCleanGitMain = (wsPath: String) =>
   branchLabel = match currentBranch #= ""
     | true => "unknown"
     | false => currentBranch
-  cleanStr = match isClean
-    | true => "true"
-    | false => "false"
+  cleanStr = "false"
 
   => {
     ok: false,
