@@ -1,5 +1,5 @@
 import { Array, Console, Effect, Option, Schema, Scope, String } from "effect"
-import { parseAgyLine, SessionCompleted } from "./provider.js"
+import { buildAgyCommand, parseAgyLine, SessionCompleted, UsageLimitReached } from "./provider.js"
 
 export schema SessionResult = {
   exitCode: Number
@@ -44,6 +44,10 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
   code = rawCode |> Option.flatMap(Schema.decodeUnknownOption(Schema.Number)) |> Option.getOrElse(() => 0)
   lines = outText |> String.split("\n")
   events = lines |> Array.map(parseAgyLine) |> Array.getSomes
+  usageLimited = events |> Array.some((e) => match e
+    | UsageLimitReached => true
+    | _ => false
+  )
   isCompleted = events |> Array.some((e) => match e
     | SessionCompleted => true
     | _ => false
@@ -51,8 +55,14 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
   => {
     exitCode: code,
     totalTokens: lines |> Array.length,
-    completed: isCompleted or code #= 0
+    completed: isCompleted and not usageLimited and code #= 0
   }
+}
+
+export runConfiguredAgentSession = (prompt: String, cwd: String, provider: String = "agy") => {
+  command = buildAgyCommand(Option.none())
+  selected = [provider] |> Array.appendAll(command |> Array.drop(1))
+  => runAgentSession(selected, cwd, Option.some(prompt))
 }
 
 export runMockAgentSession = (agentName: String, taskId: String) => effect {

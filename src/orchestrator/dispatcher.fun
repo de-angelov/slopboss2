@@ -3,7 +3,7 @@ import { archiveTask, BoardStore, loadBoardStoreSync, MarkdownSection, moveTask,
 import { findReadyTasks, TaskNode } from "../domain/dag.js"
 import { acquireBoardLock } from "../services/coordination.js"
 import { buildDevAgentPrompt } from "../services/prompt.js"
-import { runMockAgentSession, SessionResult } from "../services/runner.js"
+import { runConfiguredAgentSession, runMockAgentSession, SessionResult } from "../services/runner.js"
 import { createMergeTrain, enqueueMergeRequest, landMergeRequest, MergeRequest } from "./mergetrain.js"
 
 export schema ActiveAgentSession = {
@@ -178,15 +178,40 @@ resolveBranchName = (rawBranch: Option.Option<String>, agentIndex: Number, taskI
   => b
 }
 
-executeRunner = (runnerOpt: Option.Option<Unknown>, agentId: String, taskId: String, prompt: String): Effect.Effect<SessionResult, Any, Any> => {
-  when (Option.isNone(runnerOpt)) => runMockAgentSession(agentId, taskId)
-  runnerAny: Any = Option.getOrElse(runnerOpt, () => "")
-  runnerCall: (a: String, b: String, c: String) => Effect.Effect<Unknown, Any, Any> = runnerAny
-  => effect {
-    rawRes <- runnerCall(agentId, taskId, prompt)
-    => decodeSessionResult(rawRes)
-  }
+runGitInWorkspace = (args: Array<String>, workspace: String) => {
+  proc = Bun.spawnSync(["git"] |> Array.appendAll(args), { cwd: workspace, stdout: "pipe", stderr: "pipe" })
+  => { code: proc.exitCode, out: proc.stdout.toString() |> String.trim }
 }
+
+prepareWorkspace = (workspace: String, branch: String): Effect.Effect<Boolean, Any, Any> => effect {
+  status = runGitInWorkspace(["status", "--porcelain"], workspace)
+  branchRes = runGitInWorkspace(["branch", "--show-current"], workspace)
+  when (branchRes.code #! 0) => false
+  when (branchRes.out #= branch) => true
+  exists = runGitInWorkspace(["show-ref", "--verify", "--quiet", "refs/heads/" + branch], workspace)
+  checkoutArgs = match exists.code #= 0
+    | true => ["checkout", branch]
+    | false => ["checkout", "-b", branch]
+  // Git may refuse a checkout that would overwrite local changes. That preserves
+  // the user's workspace data and leaves this task available for recovery.
+  checkout = runGitInWorkspace(checkoutArgs, workspace)
+  _ = status
+  => checkout.code #= 0
+}
+
+executeRunner = (runnerOpt: Option.Option<Unknown>, useMock: Boolean, agentId: String, taskId: String, prompt: String, workspace: String): Effect.Effect<SessionResult, Any, Any> =>
+  match useMock
+    | true => runMockAgentSession(agentId, taskId)
+    | false => match Option.isNone(runnerOpt)
+      | true => runConfiguredAgentSession(prompt, workspace)
+      | false => {
+        runnerAny: Any = Option.getOrElse(runnerOpt, () => "")
+        runnerCall: (a: String, b: String, c: String, d: String) => Effect.Effect<Unknown, Any, Any> = runnerAny
+        => effect {
+          rawRes <- runnerCall(agentId, taskId, prompt, workspace)
+          => decodeSessionResult(rawRes)
+        }
+      }
 
 resolveUsedTokens = (tokensOpt: Option.Option<Number>): Number =>
   Option.getOrElse(tokensOpt, () => 1420)
@@ -265,7 +290,14 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
   workspacePath = boardDir + "/workspaces/repo-agent-" + idle.agentIndex
   prompt: String = buildDevAgentPrompt(boardDir, taskAssigned, idle.agentId)
 
-  runRes <- executeRunner(Option.fromNullishOr(config.runnerFn), idle.agentId, taskAssigned.id, prompt)
+  useMock = Option.getOrElse(Option.fromNullishOr(config.mockRunner), () => false)
+  hasInjectedRunner = Option.isSome(Option.fromNullishOr(config.runnerFn))
+  prepared <- match useMock or hasInjectedRunner
+    | true => Effect.succeed(true)
+    | false => prepareWorkspace(workspacePath, branchName)
+  runRes <- match prepared
+    | true => executeRunner(Option.fromNullishOr(config.runnerFn), useMock, idle.agentId, taskAssigned.id, prompt, workspacePath)
+    | false => Effect.succeed({ exitCode: 1, totalTokens: 0, completed: false })
 
   usedTokens = resolveUsedTokens(Option.fromNullishOr(runRes.totalTokens))
   inTokens = Math.floor(usedTokens * 0.7)
@@ -277,7 +309,7 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
     totalTokens: currentTokens.totalTokens + usedTokens
   }
 
-  isDone = runRes.completed or runRes.exitCode #= 0
+  isDone = runRes.completed and runRes.exitCode #= 0
 
   updatedSessions <- handleSessionCompletion(
     isDone,
