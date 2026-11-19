@@ -1,4 +1,4 @@
-import { Array, Option, Schema, String } from "effect"
+import { Array, DateTime, Option, Schema, String } from "effect"
 
 export schema TaskStatus =
   | Todo
@@ -23,11 +23,12 @@ export schema Board = {
 // Parses Markdown bullet tasks
 export parseTaskLine = (line: String) =>
   trimmed = line |> String.trim
+  nowMs = DateTime.toEpochMillis(DateTime.nowUnsafe())
   parsed = match trimmed
     | t when t |> String.startsWith("- [x]") =>
       body = t |> String.substring(5) |> String.trim
       {
-        id: "TASK-" + globalThis.String(Date.now()),
+        id: "TASK-" + globalThis.String(nowMs),
         title: body,
         description: body,
         status: Done,
@@ -38,7 +39,7 @@ export parseTaskLine = (line: String) =>
     | t when t |> String.startsWith("- [/]") =>
       body = t |> String.substring(5) |> String.trim
       {
-        id: "TASK-" + globalThis.String(Date.now()),
+        id: "TASK-" + globalThis.String(nowMs),
         title: body,
         description: body,
         status: InProgress,
@@ -49,7 +50,7 @@ export parseTaskLine = (line: String) =>
     | t when t |> String.startsWith("- [ ]") =>
       body = t |> String.substring(5) |> String.trim
       {
-        id: "TASK-" + globalThis.String(Date.now()),
+        id: "TASK-" + globalThis.String(nowMs),
         title: body,
         description: body,
         status: Todo,

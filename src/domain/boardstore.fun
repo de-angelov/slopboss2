@@ -49,7 +49,7 @@ export BunServices = {
   layer: Layer.merge(Path.layer, Layer.succeed(FileSystem.FileSystem, BunFileSystem))
 }
 
-assignStore = (target: ts { Record<string, any> }, source: ts { Record<string, any> }) => {
+assignStore = (target: Record<String, Any>, source: Record<String, Any>) => {
   res: Unknown = globalThis.Object.assign(target, source)
   => target
 }
@@ -60,7 +60,7 @@ export atomicWriteFileEffect = (filePath: String, content: String) => effect {
   dir = pathService.dirname(filePath)
   base = pathService.basename(filePath)
   _ <- fsService.makeDirectory(dir)
-  tempPath = pathService.join(dir, "." + base + ".tmp." + globalThis.String(Date.now()) + "." + globalThis.Math.random().toString(36).slice(2))
+  tempPath = pathService.join(dir, "." + base + ".tmp." + globalThis.String(DateTime.toEpochMillis(DateTime.nowUnsafe())) + "." + globalThis.Math.random().toString(36).slice(2))
   _ <- fsService.writeFileString(tempPath, content)
   _ <- fsService.rename(tempPath, filePath)
   => true
@@ -69,7 +69,15 @@ export atomicWriteFileEffect = (filePath: String, content: String) => effect {
 export atomicWriteFile = (filePath: String, content: String) => atomicWriteFileEffect(filePath, content) |> Effect.provide(BunServices.layer)
 
 export atomicWriteFileSync = (filePath: String, content: String) => {
-  _ = atomicWriteFile(filePath, content) |> Effect.runSync
+  dir = filePath |> String.split("/") |> Array.dropRight(1) |> Array.join("/")
+  dirSafe = match (dir #= "")
+    | true => "."
+    | false => dir
+  fs.mkdirSync(dirSafe, { recursive: true })
+  base = filePath |> String.split("/") |> Array.last |> Option.getOrElse(() => "file")
+  tempPath = dirSafe + "/." + base + ".tmp." + globalThis.String(DateTime.toEpochMillis(DateTime.nowUnsafe())) + "." + globalThis.Math.random().toString(36).slice(2)
+  fs.writeFileSync(tempPath, content, "utf-8")
+  fs.renameSync(tempPath, filePath)
   => true
 }
 
@@ -417,7 +425,7 @@ formatDocumentOnly = (doc: TasksDocument): String => {
   => (header |> String.trim) + "\n\n" + sectionsPart
 }
 
-export formatTasksDocument = (docOrSections: ts { any }, maybeHeader?: String): String => {
+export formatTasksDocument = (docOrSections: Any, maybeHeader?: String): String => {
   isArray = globalThis.Array.isArray(docOrSections)
   res = match isArray
     | true => formatSectionsOnly(docOrSections, maybeHeader)
@@ -455,7 +463,7 @@ findTaskInBoardStore = (store: BoardStore, taskId: String): Option.Option<TaskBl
   => res
 }
 
-export findTask = (store: ts { any }, taskId: String): Option.Option<TaskBlock> => {
+export findTask = (store: Any, taskId: String): Option.Option<TaskBlock> => {
   isDoc = globalThis.Object.hasOwn(store, "sections")
   res = match isDoc
     | true => findTaskInTasksDocument(store, taskId)
@@ -544,7 +552,7 @@ updateTaskStatusInTasksDocument = (doc: TasksDocument, taskId: String, newStatus
   => doc
 }
 
-export updateTaskStatus = (store: ts { any }, taskId: String, newStatus: String): ts { any } => {
+export updateTaskStatus = (store: Any, taskId: String, newStatus: String): Any => {
   isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
   res = match isBoardStore
     | true => updateTaskStatusInBoardStore(store, taskId, newStatus)
@@ -568,7 +576,7 @@ appendTaskInTasksDocument = (doc: TasksDocument, targetSectionTitle: String, tas
   => doc
 }
 
-export appendTask = (store: ts { any }, targetSectionTitle: String, task: TaskBlock): ts { any } => {
+export appendTask = (store: Any, targetSectionTitle: String, task: TaskBlock): Any => {
   isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
   res = match isBoardStore
     | true => appendTaskInBoardStore(store, targetSectionTitle, task)
@@ -615,8 +623,32 @@ export loadBoardStoreEffect = (boardDir: String) => effect {
 export loadBoardStore = (boardDir: String) => loadBoardStoreEffect(boardDir) |> Effect.provide(BunServices.layer)
 
 export loadBoardStoreSync = (boardDir: String): BoardStore => {
-  store = loadBoardStore(boardDir) |> Effect.runSync
-  => store
+  tasksPath = boardDir + "/TASKS.md"
+  backlogPath = boardDir + "/BACKLOG.md"
+  archivePath = boardDir + "/ARCHIVE.md"
+
+  tasksRaw = match fs.existsSync(tasksPath)
+    | true => fs.readFileSync(tasksPath, "utf-8")
+    | false => "# TASKS\n"
+
+  backlogRaw = match fs.existsSync(backlogPath)
+    | true => fs.readFileSync(backlogPath, "utf-8")
+    | false => "# BACKLOG\n"
+
+  archiveRaw = match fs.existsSync(archivePath)
+    | true => fs.readFileSync(archivePath, "utf-8")
+    | false => "# ARCHIVE\n"
+
+  tasksDoc = parseTasksDocument(tasksRaw)
+  archiveDoc = parseTasksDocument(archiveRaw)
+
+  => {
+    boardDir: Option.some(boardDir),
+    tasksDoc: tasksDoc,
+    backlogContent: backlogRaw,
+    archiveContent: archiveRaw,
+    archiveDoc: archiveDoc
+  }
 }
 
 export createBoardStore = (boardDir?: String): BoardStore => {
@@ -665,7 +697,19 @@ export persistBoardStoreEffect = (store: BoardStore) => effect {
 export persistBoardStore = (store: BoardStore) => persistBoardStoreEffect(store) |> Effect.provide(BunServices.layer)
 
 export persistBoardStoreSync = (store: BoardStore) => {
-  _ = persistBoardStore(store) |> Effect.runSync
+  dir = match store.boardDir
+    | Some(d) => d
+    | None => ""
+
+  when (dir #= "") => true
+
+  tasksPath = dir + "/TASKS.md"
+  archivePath = dir + "/ARCHIVE.md"
+  backlogPath = dir + "/BACKLOG.md"
+
+  atomicWriteFileSync(tasksPath, formatTasksDocument(store.tasksDoc))
+  atomicWriteFileSync(archivePath, formatTasksDocument(store.archiveDoc, store.archiveContent))
+  atomicWriteFileSync(backlogPath, store.backlogContent)
   => true
 }
 
@@ -673,7 +717,8 @@ moveTaskInTasksDocument = (doc: TasksDocument, taskId: String, targetSectionTitl
   r = removeTaskFromSections(doc.sections, taskId)
   when (Option.isNone(r.maybeTask)) => doc
 
-  foundTask = Option.getOrThrow(r.maybeTask)
+  emptyBlock: TaskBlock = { id: "", title: "", category: "", owner: "", branch: "", status: "", dependencies: [], objective: "", scope: "", acceptanceCriteria: "", rawBody: "" }
+  foundTask = r.maybeTask |> Option.getOrElse(() => emptyBlock)
   lowerTarget = targetSectionTitle |> String.toLowerCase
   isArchive = (lowerTarget |> String.includes("archive")) or (lowerTarget |> String.includes("done"))
 
@@ -741,7 +786,8 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
 
   when (Option.isNone(taskAndStore.task)) => store
 
-  foundTask = Option.getOrThrow(taskAndStore.task)
+  emptyBlock: TaskBlock = { id: "", title: "", category: "", owner: "", branch: "", status: "", dependencies: [], objective: "", scope: "", acceptanceCriteria: "", rawBody: "" }
+  foundTask = taskAndStore.task |> Option.getOrElse(() => emptyBlock)
   curStore = taskAndStore.store
   lowerTarget = targetSectionTitle |> String.toLowerCase
   isArchive = (lowerTarget |> String.includes("archive")) or (lowerTarget |> String.includes("done"))
@@ -811,7 +857,7 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
   => store
 }
 
-export moveTask = (store: ts { any }, taskId: String, targetSectionTitle: String): ts { any } => {
+export moveTask = (store: Any, taskId: String, targetSectionTitle: String): Any => {
   isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
   res = match isBoardStore
     | true => moveTaskInBoardStore(store, taskId, targetSectionTitle)
@@ -819,4 +865,4 @@ export moveTask = (store: ts { any }, taskId: String, targetSectionTitle: String
   => res
 }
 
-export archiveTask = (store: ts { any }, taskId: String): ts { any } => moveTask(store, taskId, "Done")
+export archiveTask = (store: Any, taskId: String): Any => moveTask(store, taskId, "Done")

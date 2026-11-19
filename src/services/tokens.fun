@@ -45,20 +45,21 @@ export recordUsage = (counterRef: Ref.Ref<TokenUsage>, usage: TokenUsage) => eff
 }
 
 export triggerCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number, customBackoffMs: Option<Number>, reason: String) => effect {
-  state <- Ref.get(cdRef)
-  nextBackoff = match customBackoffMs
-    | Some(b) => b
-    | None => state.backoffMs * 2
+  _ <- Ref.update(cdRef, (state) => {
+    nextBackoff = match customBackoffMs
+      | Some(b) => b
+      | None => state.backoffMs * 2
 
-  untilTime = currentTimeMs + nextBackoff
-  newState = {
-    inCooldown: true,
-    untilMs: untilTime,
-    backoffMs: nextBackoff,
-    reason: Option.some(reason)
-  }
-  _ <- Ref.set(cdRef, newState)
-  => newState
+    untilTime = currentTimeMs + nextBackoff
+    => {
+      inCooldown: true,
+      untilMs: untilTime,
+      backoffMs: nextBackoff,
+      reason: Option.some(reason)
+    }
+  })
+  latest <- Ref.get(cdRef)
+  => latest
 }
 
 export clearCooldown = (cdRef: Ref.Ref<CooldownState>) => effect {
