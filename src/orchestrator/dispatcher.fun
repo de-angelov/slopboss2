@@ -202,16 +202,15 @@ prepareWorkspace = (workspace: String, branch: String): Effect.Effect<Boolean, A
 executeRunner = (runnerOpt: Option.Option<Unknown>, useMock: Boolean, agentId: String, taskId: String, prompt: String, workspace: String): Effect.Effect<SessionResult, Any, Any> =>
   match useMock
     | true => runMockAgentSession(agentId, taskId)
-    | false => match Option.isNone(runnerOpt)
-      | true => runConfiguredAgentSession(prompt, workspace)
-      | false => {
+    | false when Option.isNone(runnerOpt) => runConfiguredAgentSession(prompt, workspace)
+    | false => {
         runnerAny: Any = Option.getOrElse(runnerOpt, () => "")
         runnerCall: (a: String, b: String, c: String, d: String) => Effect.Effect<Unknown, Any, Any> = runnerAny
         => effect {
           rawRes <- runnerCall(agentId, taskId, prompt, workspace)
           => decodeSessionResult(rawRes)
         }
-      }
+    }
 
 resolveUsedTokens = (tokensOpt: Option.Option<Number>): Number =>
   Option.getOrElse(tokensOpt, () => 1420)
