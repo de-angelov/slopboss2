@@ -10,7 +10,7 @@ export schema CooldownState = {
   inCooldown: Boolean
   untilMs: Number
   backoffMs: Number
-  reason?: String
+  reason: Option<String>
 }
 
 export emptyTokenUsage = () => {
@@ -27,7 +27,8 @@ export createCooldownState = () => effect
   cdRef <- Ref.make({
     inCooldown: false,
     untilMs: 0,
-    backoffMs: 1000
+    backoffMs: 1000,
+    reason: Option.none()
   })
   => cdRef
 
@@ -51,7 +52,7 @@ export triggerCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number, 
     inCooldown: true,
     untilMs: untilTime,
     backoffMs: nextBackoff,
-    reason: reason
+    reason: Option.some(reason)
   }
   _ <- Ref.set(cdRef, newState)
   => newState
@@ -69,7 +70,8 @@ export resetCooldown = (cdRef: Ref.Ref<CooldownState>) => effect
   _ <- Ref.set(cdRef, {
     inCooldown: false,
     untilMs: 0,
-    backoffMs: 1000
+    backoffMs: 1000,
+    reason: Option.none()
   })
   => true
 

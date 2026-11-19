@@ -47,6 +47,7 @@ describe("Token Accounting & Cooldown Manager", () => {
       expect(state1.inCooldown).toBe(true);
       expect(state1.untilMs).toBe(12000);
       expect(state1.backoffMs).toBe(2000);
+      expect(state1.reason).toEqual(Option.some("Rate limit 429"));
 
       // In active cooldown at 11000ms
       const midActive = yield* checkCooldown(cdRef, 11000);
@@ -60,6 +61,7 @@ describe("Token Accounting & Cooldown Manager", () => {
       const state2 = yield* triggerCooldown(cdRef, 20000, Option.none(), "Rate limit 429");
       expect(state2.backoffMs).toBe(4000);
       expect(state2.untilMs).toBe(24000);
+      expect(state2.reason).toEqual(Option.some("Rate limit 429"));
 
       // Reset cooldown
       yield* resetCooldown(cdRef);
@@ -78,6 +80,7 @@ describe("Token Accounting & Cooldown Manager", () => {
       const state = yield* triggerCooldown(cdRef, 50000, Option.some(15000), "Quota exhaustion");
       expect(state.backoffMs).toBe(15000);
       expect(state.untilMs).toBe(65000);
+      expect(state.reason).toEqual(Option.some("Quota exhaustion"));
 
       const inCd = yield* checkCooldown(cdRef, 60000);
       expect(inCd).toBe(true);

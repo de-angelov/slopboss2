@@ -7,7 +7,7 @@ import { runMockAgentSession } from "../services/runner.js"
 export schema AgentState = {
   id: String
   status: String
-  currentTask?: String
+  currentTask: Option<String>
   workspace: String
 }
 
@@ -21,11 +21,13 @@ export initialOrchestratorState = () =>
     {
       id: "Dev Agent 1",
       status: "Idle",
+      currentTask: Option.none(),
       workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1"
     },
     {
       id: "Dev Agent 2",
       status: "Idle",
+      currentTask: Option.none(),
       workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2"
     }
   ]
@@ -46,13 +48,13 @@ export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) 
 
   updatedAgents = match state.tickCount
     | 0 => [
-        { id: "Dev Agent 1", status: "Running", workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
-        { id: "Dev Agent 2", status: "Running", workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
+        { id: "Dev Agent 1", status: "Running", currentTask: Option.some("SB2-03"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
+        { id: "Dev Agent 2", status: "Running", currentTask: Option.some("SB2-05"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
       ]
     | 1 => state.agents
     | _ => [
-        { id: "Dev Agent 1", status: "Completed", workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
-        { id: "Dev Agent 2", status: "Completed", workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
+        { id: "Dev Agent 1", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
+        { id: "Dev Agent 2", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
       ]
   
   _ <- Ref.set(stateRef, { tickCount: newTick, agents: updatedAgents })

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { Option } from "effect";
 import {
   renderDashboard,
   renderLane,
@@ -20,12 +21,14 @@ describe("Terminal UI Live View & Dashboard", () => {
     {
       id: "Dev Agent 1",
       status: "In Progress",
-      task: "SB2-07",
-      branch: "agent/1/sb2-07-terminal-dashboard",
+      task: Option.some("SB2-07"),
+      branch: Option.some("agent/1/sb2-07-terminal-dashboard"),
     },
     {
       id: "Dev Agent 2",
       status: "Idle",
+      task: Option.none(),
+      branch: Option.none(),
     },
   ];
 

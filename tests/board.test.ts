@@ -7,18 +7,24 @@ describe("Board domain parser & formatter", () => {
     const task = parseTaskLine("- [x] Ship release v0.2.0");
     expect(task.status._tag).toBe("Done");
     expect(task.title).toBe("Ship release v0.2.0");
+    expect(task.assignee).toEqual(Option.none());
+    expect(task.branch).toEqual(Option.none());
   });
 
   it("parses in-progress task line", () => {
     const task = parseTaskLine("- [/] Build CLI orchestrator");
     expect(task.status._tag).toBe("InProgress");
     expect(task.title).toBe("Build CLI orchestrator");
+    expect(task.assignee).toEqual(Option.none());
+    expect(task.branch).toEqual(Option.none());
   });
 
   it("parses todo task line", () => {
     const task = parseTaskLine("- [ ] Write integration tests");
     expect(task.status._tag).toBe("Todo");
     expect(task.title).toBe("Write integration tests");
+    expect(task.assignee).toEqual(Option.none());
+    expect(task.branch).toEqual(Option.none());
   });
 
   it("formats task back to Markdown bullet", () => {

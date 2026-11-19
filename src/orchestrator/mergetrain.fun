@@ -12,8 +12,8 @@ export schema MergeRequest = {
 export schema MergeResult = {
   taskId: String
   success: Boolean
-  commitHash?: String
-  error?: String
+  commitHash: Option<String>
+  error: Option<String>
 }
 
 export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect
@@ -27,7 +27,9 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect
         | None => Console.log("[MERGE TRAIN] No verification command specified.")
       => {
         taskId: req.taskId,
-        success: true
+        success: true,
+        commitHash: Option.none(),
+        error: Option.none()
       }
     | false => effect
       _ <- Console.log("[MERGE TRAIN] Squash-merging " + req.branch + " into " + baseBranch)
@@ -38,7 +40,8 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect
       => {
         taskId: req.taskId,
         success: true,
-        commitHash: "f1a2b3c4d5e6"
+        commitHash: Option.some("f1a2b3c4d5e6"),
+        error: Option.none()
       }
 
   out <- res
