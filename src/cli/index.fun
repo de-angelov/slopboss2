@@ -4,6 +4,8 @@ import { ReconcilerConfig, runReconcilerLoop } from "../orchestrator/dispatcher.
 import { initBoardStructure } from "../services/setup.js"
 import { buildInteractiveCommand } from "../services/provider.js"
 import { defaultLiveViewOptions, LiveViewOptions, runLiveView } from "./view.js"
+import { findTask, loadBoardStoreSync, updateTaskStatus } from "../domain/boardstore.js"
+import { acquireBoardLock } from "../services/coordination.js"
 
 export schema CliDoctorCommand = {
   command: String
@@ -317,6 +319,8 @@ isKnownSubcommand = (cmd: String): Boolean => {
   when (cmd #= "groom") => true
   when (cmd #= "status") => true
   when (cmd #= "view") => true
+  when (cmd #= "board") => true
+  when (cmd #= "recover") => true
   => false
 }
 
@@ -343,6 +347,9 @@ export parseCliArgs = (argv?: Array<String>) => {
     command: "help",
     type: "help"
   }
+
+  when (first #= "board") => parseBoardCommand(subArgs)
+  when (first #= "recover") => parseRecoverCommand(subArgs)
 
   when (not isKnownSubcommand(first)) => {
     command: "invalid",
@@ -386,6 +393,22 @@ export parseCliArgs = (argv?: Array<String>) => {
   when (normCmd #= "view") => { command: "view", type: "view", dir: resolvedDir, pollIntervalMs: Option.getOrUndefined(parsed.pollIntervalMs), help: parsed.help }
 
   => { command: "invalid", type: "invalid", error: "Unknown command: " + first }
+}
+
+parseBoardCommand = (args: Array<String>) => {
+  action = args |> Array.get(0) |> Option.getOrElse(() => "")
+  rest = args |> Array.drop(1)
+  id = rest |> Array.get(0) |> Option.getOrElse(() => "")
+  status = rest |> Array.get(1) |> Option.getOrElse(() => "")
+  dirOpt = rest |> Array.findFirstIndex((v) => v #= "--dir") |> Option.flatMap((i) => rest |> Array.get(i + 1))
+  dir = Option.getOrElse(dirOpt, () => DEFAULT_BOARD_DIR)
+  => { command: "board", type: "board", action: action, id: id, status: status, dir: dir }
+}
+
+parseRecoverCommand = (args: Array<String>) => {
+  dirOpt = args |> Array.findFirstIndex((v) => v #= "--dir" or v #= "-d") |> Option.flatMap((i) => args |> Array.get(i + 1))
+  dir = Option.getOrElse(dirOpt, () => args |> Array.get(0) |> Option.getOrElse(() => DEFAULT_BOARD_DIR))
+  => { command: "recover", type: "recover", dir: dir }
 }
 
 export printStatus = (boardDir: String) => effect {
@@ -633,6 +656,9 @@ export dispatchCli = (cmd: Any, options?: Any) => {
   repoStr = Option.fromNullishOr(Reflect.get(obj, "repoUrl")) |> Option.map((r) => "" + r) |> Option.getOrElse(() => "https://github.com/de-angelov/slopboss2.git")
   agentsNum = Option.fromNullishOr(Reflect.get(obj, "agents")) |> Option.flatMap((a) => Number.parse("" + a)) |> Option.getOrElse(() => 2)
 
+  when (dispatchAction #= "board") => dispatchBoardCommand(obj, dirStr)
+  when (dispatchAction #= "recover") => acquireBoardLock(dirStr).pipe(Effect.scoped)
+
   when (dispatchAction #= "help") => handleHelp(cmd)
   when (dispatchAction #= "invalid") => handleInvalid(cmd)
   when (dispatchAction #= "doctor") => runDoctorCommand(dirStr)
@@ -642,6 +668,36 @@ export dispatchCli = (cmd: Any, options?: Any) => {
   when (dispatchAction #= "status") => printStatus(dirStr)
   when (dispatchAction #= "view") => runViewCommandWithOpts(cmd, Option.getOrUndefined(Option.fromNullishOr(rawOptions)))
   => failUnknownCommand(rawCmd)
+}
+
+dispatchBoardCommand = (cmd: Any, dir: String) => effect {
+  action = "" + Reflect.get(cmd, "action")
+  id = "" + Reflect.get(cmd, "id")
+  status = "" + Reflect.get(cmd, "status")
+  result <- match action
+    | "get" => boardGet(dir, id)
+    | "list" => boardList(dir)
+    | "set" => boardSet(dir, id, status)
+    | _ => Effect.fail(CliCommandError({ message: "Usage: slopboss2 board <get <id>|list|set <id> <status>>" }))
+  => result
+}
+
+boardGet = (dir: String, id: String) => effect {
+  task = findTask(loadBoardStoreSync(dir), id)
+  _ <- Console.log(Option.match(task, { onNone: () => "Task not found: " + id, onSome: (t) => t.rawBody }))
+  => task
+}
+
+boardList = (dir: String) => effect {
+  tasks = loadBoardStoreSync(dir).tasksDoc.sections |> Array.flatMap((section) => section.tasks)
+  _ <- Console.log(tasks |> Array.map((t) => t.id + "  " + t.title + " (" + t.status + ")") |> Array.join("\n"))
+  => tasks
+}
+
+boardSet = (dir: String, id: String, status: String) => effect {
+  updated = updateTaskStatus(loadBoardStoreSync(dir), id, status)
+  _ <- Console.log("Updated " + id + " to " + status)
+  => updated
 }
 
 export runCli = (argv?: Array<String>, options?: Any) => {
