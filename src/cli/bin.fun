@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { Effect } from "effect"
 import { BunServices } from "@effect/platform-bun"
 import { runCli } from "./index.js"

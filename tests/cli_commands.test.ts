@@ -494,7 +494,7 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
 
   describe("Binary Executable (src/cli/bin.fun)", () => {
     it("runs binary directly with --help and exits 0", async () => {
-      const proc = Bun.spawn(["bun", "run", "src/cli/bin.fun", "--help"], {
+      const proc = Bun.spawn(["./src/cli/bin.fun", "--help"], {
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -511,7 +511,7 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
     }, 15000);
 
     it("runs binary with doctor command and prints diagnostic table", async () => {
-      const proc = Bun.spawn(["bun", "run", "src/cli/bin.fun", "doctor", "--dir", tempDir], {
+      const proc = Bun.spawn(["./src/cli/bin.fun", "doctor", "--dir", tempDir], {
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -525,7 +525,7 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
     }, 15000);
 
     it("runs binary with invalid subcommand and exits with code 1", async () => {
-      const proc = Bun.spawn(["bun", "run", "src/cli/bin.fun", "bogus-command"], {
+      const proc = Bun.spawn(["./src/cli/bin.fun", "bogus-command"], {
         stdout: "pipe",
         stderr: "pipe",
       });
