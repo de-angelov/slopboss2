@@ -296,108 +296,18 @@ parseTokens = (subcommand: String, tokens: Array<String>, acc: RawParsedOptions)
   isFlag = head |> String.startsWith("-")
   when (not isFlag) => parseTokens(subcommand, tail, { ...acc, positionals: acc.positionals |> Array.append(head) })
 
-  match subcommand
-    | "doctor" =>
-      match head
-        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-    | "run" =>
-      match head
-        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "--detach" => parseTokens(subcommand, tail, { ...acc, detach: true })
-        | "--max-ticks" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
-        | "maxTicks" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
-        | "--iterations" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
-        | "--poll-interval" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
-        | "pollInterval" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
-        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-    | "init" =>
-      match head
-        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "--repo" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-        | "-r" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-        | "--agents" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
-        | "-a" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
-        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-    | "setup" =>
-      match head
-        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "--repo" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-        | "-r" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-        | "--agents" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
-        | "-a" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
-        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-    | "groom" =>
-      match head
-        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "--model" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
-        | "-m" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
-        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-    | "status" =>
-      match head
-        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-    | "view" =>
-      match head
-        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-        | "--poll-interval" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
-        | "pollInterval" =>
-          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-          valNum = Number.parse(valStr)
-          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
-        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-    | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
+  isDirCommand = subcommand #= "doctor" or subcommand #= "run" or subcommand #= "init" or subcommand #= "setup" or subcommand #= "groom" or subcommand #= "status" or subcommand #= "view"
+  numericArg = tail |> Array.get(0) |> Option.getOrElse(() => "0") |> Number.parse
+  agentCount = tail |> Array.get(0) |> Option.getOrElse(() => "2") |> Number.parse
+  when (isDirCommand and (head #= "--dir" or head #= "-d")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+  when ((subcommand #= "run" or subcommand #= "view") and (head #= "--poll-interval" or head #= "pollInterval")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: numericArg })
+  when (subcommand #= "run" and (head #= "--max-ticks" or head #= "maxTicks" or head #= "--iterations")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: numericArg })
+  when (subcommand #= "run" and head #= "--detach") => parseTokens(subcommand, tail, { ...acc, detach: true })
+  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--repo" or head #= "-r")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
+  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--agents" or head #= "-a")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: agentCount })
+  when (subcommand #= "groom" and (head #= "--model" or head #= "-m")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
+  when ((head #= "--help" or head #= "-h") and isDirCommand) => parseTokens(subcommand, tail, { ...acc, help: true })
+  => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
 
 isKnownSubcommand = (cmd: String): Boolean => {
   when (cmd #= "doctor") => true
