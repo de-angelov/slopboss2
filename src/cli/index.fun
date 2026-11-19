@@ -90,10 +90,40 @@ export schema HelpResult = {
   output: String
 }
 
+export getEnvVar = (name: String): Option<String> =>
+  match Option.fromNullishOr(globalThis.process)
+    | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "env"))
+        | Some(env) => match Option.fromNullishOr(Reflect.get(env, name))
+            | Some(val) => Option.some(globalThis.String(val))
+            | None => Option.none()
+            | _ => Option.none()
+        | None => Option.none()
+        | _ => Option.none()
+    | None => Option.none()
+    | _ => Option.none()
+
+export getProcessArgv = (): Array<String> =>
+  match Option.fromNullishOr(globalThis.process)
+    | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "argv"))
+        | Some(argv) => argv
+        | None => []
+        | _ => []
+    | None => []
+    | _ => []
+
+export getProcessExecPath = (): String =>
+  match Option.fromNullishOr(globalThis.process)
+    | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "execPath"))
+        | Some(ep) => globalThis.String(ep)
+        | None => "bun"
+        | _ => "bun"
+    | None => "bun"
+    | _ => "bun"
+
 defaultBoardDirFallback = () => "/home/dangelov/slopboss2-board"
 
 export DEFAULT_BOARD_DIR = Option.getOrElse(
-  Option.fromNullishOr(globalThis.process.env.SLOPBOSS_BOARD_DIR),
+  getEnvVar("SLOPBOSS_BOARD_DIR"),
   defaultBoardDirFallback
 )
 
@@ -134,12 +164,18 @@ export formatDoctorTable = (report: Any): String => {
     | _ => []
   checkLines = rawChecks |> Array.map((c: Any) => {
     cObj: Any = globalThis.Object(c)
-    isOk = Boolean(Reflect.get(cObj, "ok"))
+    isOk = match Option.fromNullishOr(Reflect.get(cObj, "ok"))
+      | Some(ok) => ok #= true
+      | None => false
+      | _ => false
     status = match isOk
       | true => "[ PASS ]"
       | false => "[ FAIL ]"
       | _ => "[ FAIL ]"
-    isReq = Boolean(Reflect.get(cObj, "required"))
+    isReq = match Option.fromNullishOr(Reflect.get(cObj, "required"))
+      | Some(req) => req #= true
+      | None => false
+      | _ => false
     req = match isReq
       | true => "Yes"
       | false => "No "
@@ -148,7 +184,10 @@ export formatDoctorTable = (report: Any): String => {
     msg = globalThis.String(Reflect.get(cObj, "message"))
     => status + "  | " + name + " | " + req + "      | " + msg
   })
-  isHealthy = Boolean(Reflect.get(repObj, "isHealthy"))
+  isHealthy = match Option.fromNullishOr(Reflect.get(repObj, "isHealthy"))
+    | Some(h) => h #= true
+    | None => false
+    | _ => false
   health = match isHealthy
     | true => "HEALTHY"
     | false => "UNHEALTHY"
@@ -568,8 +607,13 @@ export runReconcilerCommand = (dir: String, detach: Boolean = false, options?: A
   res <- match detach
     | true => effect {
         spawnFnActual: Any = Option.getOrElse(Option.fromNullishOr(Reflect.get(rawOptsObj, "spawnFn")), fallbackSpawnFn)
-        binPath = Option.getOrElse(Option.fromNullishOr(globalThis.process.argv[1]), fallbackBinPath)
-        execArgs = [globalThis.process.execPath, "run", binPath, "run", "--dir", dir]
+        procArgv = getProcessArgv()
+        binPath = match procArgv |> Array.get(1)
+          | Some(bp) => bp
+          | None => fallbackBinPath()
+          | _ => fallbackBinPath()
+        execPath = getProcessExecPath()
+        execArgs = [execPath, "run", binPath, "run", "--dir", dir]
         spawnOpts = {
           detached: true,
           stdio: ["ignore", "ignore", "ignore"]
@@ -605,7 +649,7 @@ export runReconcilerCommand = (dir: String, detach: Boolean = false, options?: A
           | _ => 0
         rawMock: Unknown = Reflect.get(rawOptsObj, "mockRunner")
         mockOpt: Option<Boolean> = match Option.fromNullishOr(rawMock)
-          | Some(m) => Option.some(Boolean(m))
+          | Some(m) => Option.some(m #= true)
           | None => Option.none()
           | _ => Option.none()
         rawRunnerFn: Unknown = Reflect.get(rawOptsObj, "runnerFn")
@@ -739,7 +783,10 @@ runViewCommandWithOpts = (cmd: Any, options?: Any) => {
 export dispatchCli = (cmd: Any, options?: Any) => effect {
   obj: Any = globalThis.Object(cmd)
   rawCmd = globalThis.String(Reflect.get(obj, "command"))
-  rawHelp = Boolean(Reflect.get(obj, "help"))
+  rawHelp = match Option.fromNullishOr(Reflect.get(obj, "help"))
+    | Some(h) => h #= true
+    | None => false
+    | _ => false
   isHelpCmd = rawCmd #= "help"
   dispatchAction = match isHelpCmd or rawHelp
     | true => "help"
@@ -758,7 +805,10 @@ export dispatchCli = (cmd: Any, options?: Any) => effect {
     | None => Option.none()
     | _ => Option.none()
 
-  rawDetach = Boolean(Reflect.get(obj, "detach"))
+  rawDetach = match Option.fromNullishOr(Reflect.get(obj, "detach"))
+    | Some(d) => d #= true
+    | None => false
+    | _ => false
   rawMaxTicks: Unknown = Reflect.get(obj, "maxTicks")
   maxTicksOpt: Option<Number> = match Option.fromNullishOr(rawMaxTicks)
     | Some(m) => Option.some(globalThis.Number(m))
@@ -797,10 +847,11 @@ export dispatchCli = (cmd: Any, options?: Any) => effect {
 }
 
 export runCli = (argv?: Array<String>, options?: Any) => {
+  fallbackArgs = getProcessArgv() |> Array.drop(2)
   args = match Option.fromNullishOr(argv)
     | Some(a) => a
-    | None => globalThis.process.argv |> Array.drop(2)
-    | _ => []
+    | None => fallbackArgs
+    | _ => fallbackArgs
   parsed = parseCliArgs(args)
   opts: Unknown = Option.getOrUndefined(Option.fromNullishOr(options))
   => dispatchCli(parsed, opts)
