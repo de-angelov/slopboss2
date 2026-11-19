@@ -1,29 +1,30 @@
-import { Effect, Option, Ref, Schema } from "effect"
+import { Effect, Option, Ref } from "effect"
 
 export schema TokenUsage = {
-  inputTokens: Number
-  outputTokens: Number
+  inputTokens: Number,
+  outputTokens: Number,
   totalTokens: Number
 }
 
 export schema CooldownState = {
-  inCooldown: Boolean
-  untilMs: Number
-  backoffMs: Number
+  inCooldown: Boolean,
+  untilMs: Number,
+  backoffMs: Number,
   reason: Option<String>
 }
 
-export emptyTokenUsage = () => {
+export emptyTokenUsage = (): TokenUsage => {
   inputTokens: 0,
   outputTokens: 0,
   totalTokens: 0
 }
 
-export createTokenCounter = () => effect
+export createTokenCounter = () => effect {
   counterRef <- Ref.make(emptyTokenUsage())
   => counterRef
+}
 
-export createCooldownState = () => effect
+export createCooldownState = () => effect {
   cdRef <- Ref.make({
     inCooldown: false,
     untilMs: 0,
@@ -31,8 +32,9 @@ export createCooldownState = () => effect
     reason: Option.none()
   })
   => cdRef
+}
 
-export recordUsage = (counterRef: Ref.Ref<TokenUsage>, usage: TokenUsage) => effect
+export recordUsage = (counterRef: Ref.Ref<TokenUsage>, usage: TokenUsage) => effect {
   _ <- Ref.update(counterRef, (current) => {
     inputTokens: current.inputTokens + usage.inputTokens,
     outputTokens: current.outputTokens + usage.outputTokens,
@@ -40,8 +42,9 @@ export recordUsage = (counterRef: Ref.Ref<TokenUsage>, usage: TokenUsage) => eff
   })
   latest <- Ref.get(counterRef)
   => latest
+}
 
-export triggerCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number, customBackoffMs: Option<Number>, reason: String) => effect
+export triggerCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number, customBackoffMs: Option<Number>, reason: String) => effect {
   state <- Ref.get(cdRef)
   nextBackoff = match customBackoffMs
     | Some(b) => b
@@ -56,8 +59,9 @@ export triggerCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number, 
   }
   _ <- Ref.set(cdRef, newState)
   => newState
+}
 
-export clearCooldown = (cdRef: Ref.Ref<CooldownState>) => effect
+export clearCooldown = (cdRef: Ref.Ref<CooldownState>) => effect {
   _ <- Ref.update(cdRef, (current) => {
     inCooldown: false,
     untilMs: 0,
@@ -65,8 +69,9 @@ export clearCooldown = (cdRef: Ref.Ref<CooldownState>) => effect
     reason: current.reason
   })
   => true
+}
 
-export resetCooldown = (cdRef: Ref.Ref<CooldownState>) => effect
+export resetCooldown = (cdRef: Ref.Ref<CooldownState>) => effect {
   _ <- Ref.set(cdRef, {
     inCooldown: false,
     untilMs: 0,
@@ -74,8 +79,9 @@ export resetCooldown = (cdRef: Ref.Ref<CooldownState>) => effect
     reason: Option.none()
   })
   => true
+}
 
-export checkCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number) => effect
+export checkCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number) => effect {
   state <- Ref.get(cdRef)
   isExpired = match state.inCooldown
     | true => match (currentTimeMs >= state.untilMs)
@@ -91,3 +97,4 @@ export checkCooldown = (cdRef: Ref.Ref<CooldownState>, currentTimeMs: Number) =>
     | true => false
     | false => true
   => active
+}

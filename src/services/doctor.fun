@@ -247,31 +247,39 @@ export schema DoctorReport = {
   checks: Array<CheckResult>
 }
 
-export checkGitInstalled = () => effect
+export checkGitInstalled = () => effect {
   => checkGitInstalledSync("git")
+}
 
-export checkGitInstalledWith = (gitCmd: String) => effect
+export checkGitInstalledWith = (gitCmd: String) => effect {
   => checkGitInstalledSync(gitCmd)
+}
 
-export checkBunInstalled = () => effect
+export checkBunInstalled = () => effect {
   => checkBunInstalledSync("bun")
+}
 
-export checkBunInstalledWith = (bunCmd: String) => effect
+export checkBunInstalledWith = (bunCmd: String) => effect {
   => checkBunInstalledSync(bunCmd)
+}
 
-export checkProviderInstalled = () => effect
+export checkProviderInstalled = () => effect {
   => checkProviderInstalledSync([])
+}
 
-export checkProviderInstalledWith = (providers: Array<String>) => effect
+export checkProviderInstalledWith = (providers: Array<String>) => effect {
   => checkProviderInstalledSync(providers)
+}
 
-export checkBoardDirectory = (boardDir: String) => effect
+export checkBoardDirectory = (boardDir: String) => effect {
   => checkBoardDirectorySync(boardDir)
+}
 
-export checkWorkspaces = (boardDir: String) => effect
+export checkWorkspaces = (boardDir: String) => effect {
   => checkWorkspacesSync(boardDir)
+}
 
-export runDoctor = (boardDir: String) => effect
+export runDoctor = (boardDir: String) => effect {
   gitCheck <- checkGitInstalled()
   bunCheck <- checkBunInstalled()
   providerCheck <- checkProviderInstalled()
@@ -286,3 +294,4 @@ export runDoctor = (boardDir: String) => effect
     isHealthy: healthy,
     checks: allChecks
   }
+}

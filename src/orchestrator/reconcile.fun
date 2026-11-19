@@ -36,7 +36,7 @@ export initialOrchestratorState = () =>
     agents: agents
   }
 
-export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) => effect
+export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) => effect {
   state <- Ref.get(stateRef)
   newTick = state.tickCount + 1
   _ <- Console.log("[TICK " + globalThis.String(newTick) + "] Polling board: " + boardDir)
@@ -59,8 +59,9 @@ export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) 
   
   _ <- Ref.set(stateRef, { tickCount: newTick, agents: updatedAgents })
   => newTick
+}
 
-export startReconcileLoop = (boardDir: String, maxTicks: Number) => effect
+export startReconcileLoop = (boardDir: String, maxTicks: Number) => effect {
   stateRef <- Ref.make(initialOrchestratorState())
   _ <- Console.log("Starting fiber-supervised orchestrator loop for " + boardDir)
   policy = Schedule.recurs(maxTicks)
@@ -70,9 +71,11 @@ export startReconcileLoop = (boardDir: String, maxTicks: Number) => effect
   finalState <- Ref.get(stateRef)
   _ <- Console.log("Orchestrator completed " + globalThis.String(maxTicks) + " iterations. Final agent statuses:")
   _ <- match finalState.agents
-    | [a1, a2, ..._] => effect
+    | [a1, a2, ..._] => effect {
       _ <- Console.log("  " + a1.id + ": " + a1.status)
       _ <- Console.log("  " + a2.id + ": " + a2.status)
       => true
+    }
     | _ => Console.log("  No agents active")
   => result
+}

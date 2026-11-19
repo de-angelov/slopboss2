@@ -9,7 +9,7 @@ export schema SessionResult = {
 
 // Spawns a process wrapped in the caller's Effect Scope lifecycle.
 // On Scope exit (interruption, error, or completion), SIGTERM is sent to guarantee no orphaned processes.
-export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscoped)
+export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscoped) {
   proc = globalThis.Bun.spawn(cmd, {
     cwd: cwd,
     stdin: "pipe",
@@ -17,17 +17,18 @@ export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscope
     stderr: "pipe"
   })
 
-  _ <- Effect.addFinalizer(() => effect
+  _ <- Effect.addFinalizer(() => effect {
     _ <- Console.log("[SUPERVISOR] Terminating agent process pid=" + globalThis.String(proc.pid))
     _ = proc.kill("SIGTERM")
     => true
-  )
+  })
 
   => proc
+}
 
 // Executes an agent subprocess to completion inside an Effect Scope,
 // piping stdin, collecting stdout stream, and extracting structured events.
-export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<String>) => effect
+export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<String>) => effect {
   proc <- spawnScopedProcess(cmd, cwd)
   _ = match stdinText
     | Some(text) =>
@@ -51,8 +52,9 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
     totalTokens: lines |> Array.length,
     completed: isCompleted or code #= 0
   }
+}
 
-export runMockAgentSession = (agentName: String, taskId: String) => effect
+export runMockAgentSession = (agentName: String, taskId: String) => effect {
   _ <- Console.log("[RUNNER] Agent " + agentName + " started executing task " + taskId)
   _ <- Console.log("[RUNNER] Workspace clean, branch checked out.")
   _ <- Console.log("[RUNNER] Agent session completed successfully.")
@@ -61,3 +63,4 @@ export runMockAgentSession = (agentName: String, taskId: String) => effect
     totalTokens: 1420,
     completed: true
   }
+}

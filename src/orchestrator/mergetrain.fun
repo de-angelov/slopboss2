@@ -16,11 +16,11 @@ export schema MergeResult = {
   error: Option<String>
 }
 
-export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect
+export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
   _ <- Console.log("[MERGE TRAIN] Processing landing for task: " + req.taskId + " on branch: " + req.branch)
 
   res = match req.isZeroCommit
-    | true => effect
+    | true => effect {
       _ <- Console.log("[MERGE TRAIN] Zero-commit audit task detected. Bypassing git commit.")
       _ <- match req.verificationCmd
         | Some(cmd) => Console.log("[MERGE TRAIN] Running verification: " + cmd)
@@ -31,7 +31,8 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect
         commitHash: Option.none(),
         error: Option.none()
       }
-    | false => effect
+    }
+    | false => effect {
       _ <- Console.log("[MERGE TRAIN] Squash-merging " + req.branch + " into " + baseBranch)
       _ <- match req.verificationCmd
         | Some(cmd) => Console.log("[MERGE TRAIN] Running pre-push verification: " + cmd)
@@ -43,25 +44,31 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect
         commitHash: Option.some("f1a2b3c4d5e6"),
         error: Option.none()
       }
+    }
 
   out <- res
   _ <- Console.log("[MERGE TRAIN] Landing completed for " + req.taskId + " (success=" + globalThis.String(out.success) + ")")
   => out
+}
 
-export createMergeTrain = (capacity: Number) => effect
+export createMergeTrain = (capacity: Number) => effect {
   queue <- Queue.bounded(capacity)
   => queue
+}
 
-export enqueueMerge = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => effect
+export enqueueMerge = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => effect {
   _ <- Console.log("[MERGE TRAIN] Enqueuing merge request for " + req.taskId)
   _ <- Queue.offer(queue, req)
   => true
+}
 
-export enqueueMergeRequest = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => effect
+export enqueueMergeRequest = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => effect {
   res <- enqueueMerge(queue, req)
   => res
+}
 
-export processNextMerge = (queue: Queue.Queue<MergeRequest>, baseBranch: String) => effect
+export processNextMerge = (queue: Queue.Queue<MergeRequest>, baseBranch: String) => effect {
   req <- Queue.take(queue)
   res <- landMergeRequest(req, baseBranch)
   => res
+}

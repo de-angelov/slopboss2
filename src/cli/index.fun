@@ -12,7 +12,7 @@ export buildGroomPrompt = (boardDir: String, backlogContent: String) =>
   instructions = "Instructions:\n1. Review prioritized tasks in BACKLOG.md and verify readiness and dependencies.\n2. Format task specifications for TASKS.md including Task ID, Category, Owner, Branch, Status, Objective, Scope, Acceptance Criteria.\n3. Write groomed task allocations to TASKS.md and update BACKLOG.md."
   => header + ctx + content + instructions
 
-export runSetup = (boardDir: String, repoUrl: String) => effect
+export runSetup = (boardDir: String, repoUrl: String) => effect {
   _ <- Console.log("=== SLOPBOSS2 SETUP ===")
   _ <- Console.log("Board directory: " + boardDir)
   _ <- Console.log("Repository URL:  " + repoUrl)
@@ -21,16 +21,18 @@ export runSetup = (boardDir: String, repoUrl: String) => effect
   _ <- initBoardStructure(boardDir, repoUrl, 2)
   _ <- Console.log("Setup complete. Workspaces initialized.")
   => true
+}
 
-export printStatus = (boardDir: String) => effect
+export printStatus = (boardDir: String) => effect {
   _ <- Console.log("=== SLOPBOSS2 BOARD STATUS ===")
   _ <- Console.log("Board: " + boardDir)
   _ <- Console.log("Lane 1: Dev Agent 1 -> [SB2-03] Live Process Runner (Completed)")
   _ <- Console.log("Lane 2: Dev Agent 2 -> [SB2-05] Interactive Grooming CLI (In Progress)")
   _ <- Console.log("Fleet: 2 dev agents active, provider agy.")
   => true
+}
 
-export launchInteractiveGroom = (boardDir: String, model: Option<String>) => effect
+export launchInteractiveGroom = (boardDir: String, model: Option<String>) => effect {
   backlogPath = boardDir + "/BACKLOG.md"
   rawText <- js globalThis.Bun.file(backlogPath).text()
   backlogText = rawText |> Option.getOrElse(() => "")
@@ -48,13 +50,15 @@ export launchInteractiveGroom = (boardDir: String, model: Option<String>) => eff
   code = rawCode |> Option.getOrElse(() => 0)
   _ <- Console.log("Team Lead grooming session completed with exit code " + globalThis.String(code))
   => code
+}
 
-export runControlLoop = (boardDir: String, maxTicks: Number) => effect
+export runControlLoop = (boardDir: String, maxTicks: Number) => effect {
   _ <- Console.log("Starting Slopboss2 control loop (provider: agy, dev-agents: 2)...")
   res <- startReconcileLoop(boardDir, maxTicks)
   => res
+}
 
-export runCli = () => effect
+export runCli = () => effect {
   rawArgs = globalThis.process.argv
   args = rawArgs |> Array.drop(2)
   cmd = match args
@@ -73,3 +77,4 @@ export runCli = () => effect
     | "run" => runControlLoop(boardDir, 3)
     | other => Console.log("Unknown command: " + other + ". Usage: slopboss2 [setup|init|status|groom|run|view] [boardDir]")
   => true
+}
