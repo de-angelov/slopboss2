@@ -43,6 +43,18 @@ describe("verified Git landing", () => {
     expect(execFileSync("git", ["--git-dir", remote, "log", "--format=%P", "-1", "main"], { encoding: "utf8" }).trim().split(" ")).toHaveLength(1);
   });
 
+  it("recognizes an already pushed task landing on retry", async () => {
+    const { remote, request } = setup();
+    const first = await Effect.runPromise(landMergeRequest(request, "main"));
+    expect(first.success).toBe(true);
+    const headBeforeRetry = execFileSync("git", ["--git-dir", remote, "rev-parse", "main"], { encoding: "utf8" }).trim();
+    const retry = await Effect.runPromise(landMergeRequest(request, "main"));
+    const headAfterRetry = execFileSync("git", ["--git-dir", remote, "rev-parse", "main"], { encoding: "utf8" }).trim();
+    expect(retry.success).toBe(true);
+    expect(Option.getOrElse(retry.commitHash, () => "")).toBe(headBeforeRetry);
+    expect(headAfterRetry).toBe(headBeforeRetry);
+  });
+
   it("returns verification evidence and does not push", async () => {
     const { remote, request } = setup();
     request.verificationCmd = Option.some("exit 7");
