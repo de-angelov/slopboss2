@@ -2,6 +2,7 @@ import { Array, Console, Effect, Option, Schema, String } from "effect"
 import { buildAgyCommand, buildInteractiveCommand } from "../services/provider.js"
 import { buildCloneCommand } from "../services/git.js"
 import { startReconcileLoop } from "../orchestrator/reconcile.js"
+import { initBoardStructure } from "../services/setup.js"
 
 export buildGroomPrompt = (boardDir: String, backlogContent: String) =>
   header = "You are the autonomous Team Lead for slopboss2.\n"
@@ -16,6 +17,7 @@ export runSetup = (boardDir: String, repoUrl: String) => effect
   _ <- Console.log("Repository URL:  " + repoUrl)
   _ <- Console.log("Provider:        Antigravity (agy)")
   _ <- Console.log("Dev Agents:      2")
+  _ <- initBoardStructure(boardDir, repoUrl, 2)
   _ <- Console.log("Setup complete. Workspaces initialized.")
   => true
 
@@ -63,8 +65,9 @@ export runCli = () => effect
 
   _ <- match cmd
     | "setup" => runSetup(boardDir, "https://github.com/de-angelov/slopboss2.git")
+    | "init" => runSetup(boardDir, "https://github.com/de-angelov/slopboss2.git")
     | "status" => printStatus(boardDir)
     | "groom" => launchInteractiveGroom(boardDir, Option.none())
     | "run" => runControlLoop(boardDir, 3)
-    | other => Console.log("Unknown command: " + other + ". Usage: slopboss2 [setup|status|groom|run] [boardDir]")
+    | other => Console.log("Unknown command: " + other + ". Usage: slopboss2 [setup|init|status|groom|run] [boardDir]")
   => true
