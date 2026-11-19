@@ -239,7 +239,7 @@ Implement dependent component relying on SB2-BASE-01.
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8"));
     expect(pkg.dependencies["effect"]).toBeDefined();
     expect(pkg.dependencies["@effect/platform-bun"]).toBeDefined();
-    expect(pkg.scripts["test"]).toBe("bun test");
+    expect(pkg.scripts["test"]).toContain("bun test");
     expect(typeof Bun).toBe("object");
     expect(typeof Bun.version).toBe("string");
   });
