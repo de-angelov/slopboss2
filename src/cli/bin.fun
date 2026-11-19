@@ -1,5 +1,9 @@
-#!/usr/bin/env bun
 import { Effect } from "effect"
+import { BunServices } from "@effect/platform-bun"
 import { runCli } from "./index.js"
 
-res = Effect.runPromise(runCli()).catch((_err) => process.exit(1))
+program = runCli() |> Effect.provide(BunServices.layer)
+export main = () => Effect.runPromise(program).catch((_err: Unknown) => process.exit(1))
+
+res = main()
+
