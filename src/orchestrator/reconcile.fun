@@ -37,27 +37,37 @@ export initialOrchestratorState = (): OrchestratorState => {
   }
 }
 
+logTickTransition = (tickCount: Number) => {
+  when (tickCount #= 0) => Console.log("  -> Dispatching: Dev Agent 1 on [SB2-03], Dev Agent 2 on [SB2-05]")
+  when (tickCount #= 1) => Console.log("  -> Working: Dev Agent 1 on agent/1/sb2-03, Dev Agent 2 on agent/2/sb2-05")
+  => Console.log("  -> Merged: All branches merged to main. Tasks marked Done.")
+}
+
+getUpdatedAgents = (tickCount: Number, currentAgents: Array<AgentState>): Array<AgentState> => {
+  when (tickCount #= 0) => [
+    { id: "Dev Agent 1", status: "Running", currentTask: Option.some("SB2-03"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
+    { id: "Dev Agent 2", status: "Running", currentTask: Option.some("SB2-05"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
+  ]
+  when (tickCount #= 1) => currentAgents
+  => [
+    { id: "Dev Agent 1", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
+    { id: "Dev Agent 2", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
+  ]
+}
+
+reportAgentStatuses = (agents: Array<AgentState>) => {
+  when ((agents |> Array.length) #= 0) => Console.log("  No agents active")
+  => Effect.forEach(agents, (a: AgentState) => Console.log("  " + a.id + ": " + a.status))
+}
+
 export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) => effect {
   state <- Ref.get(stateRef)
   newTick = state.tickCount + 1
   _ <- Console.log("[TICK " + newTick + "] Polling board: " + boardDir)
-  
-  _ <- match state.tickCount
-    | 0 => Console.log("  -> Dispatching: Dev Agent 1 on [SB2-03], Dev Agent 2 on [SB2-05]")
-    | 1 => Console.log("  -> Working: Dev Agent 1 on agent/1/sb2-03, Dev Agent 2 on agent/2/sb2-05")
-    | _ => Console.log("  -> Merged: All branches merged to main. Tasks marked Done.")
+  _ <- logTickTransition(state.tickCount)
 
-  updatedAgents: Array<AgentState> = match state.tickCount
-    | 0 => [
-        { id: "Dev Agent 1", status: "Running", currentTask: Option.some("SB2-03"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
-        { id: "Dev Agent 2", status: "Running", currentTask: Option.some("SB2-05"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
-      ]
-    | 1 => state.agents
-    | _ => [
-        { id: "Dev Agent 1", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
-        { id: "Dev Agent 2", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
-      ]
-  
+  updatedAgents = getUpdatedAgents(state.tickCount, state.agents)
+
   _ <- Ref.update(stateRef, (s) => {
     tickCount: newTick,
     agents: updatedAgents
@@ -74,9 +84,6 @@ export startReconcileLoop = (boardDir: String, maxTicks: Number) => effect {
   result <- repeated
   finalState <- Ref.get(stateRef)
   _ <- Console.log("Orchestrator completed " + maxTicks + " iterations. Final agent statuses:")
-  hasAgents = (finalState.agents |> Array.length) > 0
-  _ <- match hasAgents
-    | true => Effect.forEach(finalState.agents, (a: AgentState) => Console.log("  " + a.id + ": " + a.status))
-    | false => Console.log("  No agents active")
+  _ <- reportAgentStatuses(finalState.agents)
   => result
 }
