@@ -1,5 +1,5 @@
-import { Array, Console, Effect, Option, Queue, Schema, String } from "effect"
-import { buildBranchMergedCheck, buildCommitCommand, buildPushCommand } from "../services/git.js"
+import { Array, Effect, Option, Queue, Schema, String } from "effect"
+import { GitSubprocessResult, SafeSpawnResult, runGitCommandSync, safeSpawnSync } from "../services/sys.js"
 
 export schema MergeRequest = {
   taskId: String
@@ -16,44 +16,66 @@ export schema MergeResult = {
   error: Option<String>
 }
 
+git = (args: Array<String>, cwd: String) => runGitCommandSync(args, cwd)
+messageOf = (result: GitSubprocessResult) => {
+  => match result.stderr |> String.isEmpty
+    | true => result.stdout
+    | false => result.stderr
+}
+runVerification = (cmd: String, cwd: String) => safeSpawnSync(["bash", "-lc", cmd], Option.none(), cwd)
+
 export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
-  _ <- Console.log("[MERGE TRAIN] Processing landing for task: " + req.taskId + " on branch: " + req.branch)
+  isZero = Option.fromNullishOr(req.isZeroCommit) |> Option.getOrElse(() => false)
+  verification = Option.fromNullishOr(req.verificationCmd)
+  verificationRes: SafeSpawnResult = match verification
+    | Some(cmd) => runVerification(cmd, req.workspace)
+    | None => { exitCode: 0, stdout: "", stderr: "", ok: true, threw: false }
+  when (not verificationRes.ok) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(),
+    error: Option.some("Verification failed: " + verificationRes.stdout + " " + verificationRes.stderr)
+  }
+  when (isZero) => {
+    taskId: req.taskId, success: true, commitHash: Option.none(), error: Option.none()
+  }
 
-  isZeroCommit = match Option.fromNullishOr(req.isZeroCommit)
-    | Some(z) => z #= true
-    | None => false
-    | _ => false
-
-  verificationOpt = req.verificationCmd
-
-  res = match isZeroCommit
-    | true => effect {
-      _ <- Console.log("[MERGE TRAIN] Zero-commit audit task detected. Bypassing git commit.")
-      verificationMessage = Option.map(verificationOpt, (cmd) => "[MERGE TRAIN] Running verification: " + cmd) |> Option.getOrElse(() => "[MERGE TRAIN] No verification command specified.")
-      _ <- Console.log(verificationMessage)
-      => {
-        taskId: req.taskId,
-        success: true,
-        commitHash: Option.none(),
-        error: Option.none()
-      }
-    }
-    | false => effect {
-      _ <- Console.log("[MERGE TRAIN] Squash-merging " + req.branch + " into " + baseBranch)
-      verificationMessage = Option.map(verificationOpt, (cmd) => "[MERGE TRAIN] Running pre-push verification: " + cmd) |> Option.getOrElse(() => "[MERGE TRAIN] No verification command specified.")
-      _ <- Console.log(verificationMessage)
-      _ <- Console.log("[MERGE TRAIN] Pushing squash commit to origin/" + baseBranch)
-      => {
-        taskId: req.taskId,
-        success: true,
-        commitHash: Option.some("f1a2b3c4d5e6"),
-        error: Option.none()
-      }
-    }
-
-  out <- res
-  _ <- Console.log("[MERGE TRAIN] Landing completed for " + req.taskId + " (success=" + out.success + ")")
-  => out
+  remoteRes = git(["remote", "get-url", "origin"], req.workspace)
+  when (not (remoteRes.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Cannot resolve origin: " + messageOf(remoteRes))
+  }
+  remote = remoteRes.stdout
+  tempRes = Bun.spawnSync(["mktemp", "-d"], { stdout: "pipe", stderr: "pipe" })
+  tempDir = tempRes.stdout.toString() |> String.trim
+  cloneRes = git(["clone", "--quiet", remote, tempDir], req.workspace)
+  when (not (cloneRes.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Cannot create isolated landing repository: " + messageOf(cloneRes))
+  }
+  fetchRes = git(["fetch", "origin", baseBranch, req.branch], tempDir)
+  when (not (fetchRes.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Branch or base validation failed: " + messageOf(fetchRes))
+  }
+  baseCheck = git(["show-ref", "--verify", "--quiet", "refs/remotes/origin/" + baseBranch], tempDir)
+  branchCheck = git(["show-ref", "--verify", "--quiet", "refs/remotes/origin/" + req.branch], tempDir)
+  when (not (baseCheck.exitCode #= 0) or not (branchCheck.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Configured base branch or task branch does not exist on origin")
+  }
+  checkoutRes = git(["checkout", "--quiet", "-B", baseBranch, "refs/remotes/origin/" + baseBranch], tempDir)
+  when (not (checkoutRes.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Cannot check out base branch: " + messageOf(checkoutRes))
+  }
+  mergeRes = git(["merge", "--squash", "refs/remotes/origin/" + req.branch], tempDir)
+  when (not (mergeRes.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Squash merge conflict; recovery workspace: " + tempDir + ". " + messageOf(mergeRes))
+  }
+  commitRes = git(["commit", "-m", "" + req.taskId + ": landed"], tempDir)
+  when (not (commitRes.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Landing commit failed; recovery workspace: " + tempDir + ". " + messageOf(commitRes))
+  }
+  hashRes = git(["rev-parse", "HEAD"], tempDir)
+  pushRes = git(["push", "origin", "HEAD:refs/heads/" + baseBranch], tempDir)
+  when (not (pushRes.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Push failed; recovery commit " + hashRes.stdout + " retained at " + tempDir + ". " + messageOf(pushRes))
+  }
+  => { taskId: req.taskId, success: true, commitHash: Option.some(hashRes.stdout), error: Option.none() }
 }
 
 export createMergeTrain = (capacity: Number) => effect {
@@ -62,15 +84,11 @@ export createMergeTrain = (capacity: Number) => effect {
 }
 
 export enqueueMerge = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => effect {
-  _ <- Console.log("[MERGE TRAIN] Enqueuing merge request for " + req.taskId)
   _ <- Queue.offer(queue, req)
   => true
 }
 
-export enqueueMergeRequest = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => effect {
-  res <- enqueueMerge(queue, req)
-  => res
-}
+export enqueueMergeRequest = (queue: Queue.Queue<MergeRequest>, req: MergeRequest) => enqueueMerge(queue, req)
 
 export processNextMerge = (queue: Queue.Queue<MergeRequest>, baseBranch: String) => effect {
   req <- Queue.take(queue)
