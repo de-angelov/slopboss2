@@ -93,34 +93,14 @@ export schema HelpResult = {
 export error CliCommandError(message: String)
 
 export getEnvVar = (name: String): Option<String> =>
-  match Option.fromNullishOr(process)
-    | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "env"))
-        | Some(env) => match Option.fromNullishOr(Reflect.get(env, name))
-            | Some(val) => Option.some("" + val)
-            | None => Option.none()
-            | _ => Option.none()
-        | None => Option.none()
-        | _ => Option.none()
-    | None => Option.none()
-    | _ => Option.none()
+export getEnvVar = (name: String): Option<String> =>
+  Option.fromNullishOr(process) |> Option.flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "env"))) |> Option.flatMap((env) => Option.fromNullishOr(Reflect.get(env, name))) |> Option.map((val) => "" + val)
 
 export getProcessArgv = (): Array<String> =>
-  match Option.fromNullishOr(process)
-    | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "argv"))
-        | Some(argv) => argv
-        | None => []
-        | _ => []
-    | None => []
-    | _ => []
+  Option.fromNullishOr(process) |> Option.flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "argv"))) |> Option.getOrElse(() => [])
 
 export getProcessExecPath = (): String =>
-  match Option.fromNullishOr(process)
-    | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "execPath"))
-        | Some(ep) => "" + ep
-        | None => "bun"
-        | _ => "bun"
-    | None => "bun"
-    | _ => "bun"
+  Option.fromNullishOr(process) |> Option.flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "execPath"))) |> Option.map((ep) => "" + ep) |> Option.getOrElse(() => "bun")
 
 defaultBoardDirFallback = () => "/home/dangelov/slopboss2-board"
 
@@ -152,6 +132,21 @@ export schema DoctorReport = {
   checks: Array<CheckItem>
 }
 
+statusTag = (isOk: Boolean): String => {
+  when (isOk) => "[ PASS ]"
+  => "[ FAIL ]"
+}
+
+requiredTag = (isReq: Boolean): String => {
+  when (isReq) => "Yes"
+  => "No "
+}
+
+healthTag = (isHealthy: Boolean): String => {
+  when (isHealthy) => "HEALTHY"
+  => "UNHEALTHY"
+}
+
 export formatDoctorTable = (report: Any): String => {
   lines = [
     "Diagnostic Check Results:",
@@ -160,139 +155,109 @@ export formatDoctorTable = (report: Any): String => {
     "--------------------------------------------------------------------------------"
   ]
   repObj: Any = report
-  rawChecks: Array<Any> = match Option.fromNullishOr(Reflect.get(repObj, "checks"))
+  rawChecksVal: Option<Any> = Option.fromNullishOr(Reflect.get(repObj, "checks"))
+  rawChecks: Array<Any> = match rawChecksVal
     | Some(c) => c
     | None => []
     | _ => []
   checkLines = rawChecks |> Array.map((c: Any) => {
     cObj: Any = c
-    isOk = match Option.fromNullishOr(Reflect.get(cObj, "ok"))
-      | Some(ok) => ok #= true
-      | None => false
-      | _ => false
-    status = match isOk
-      | true => "[ PASS ]"
-      | false => "[ FAIL ]"
-      | _ => "[ FAIL ]"
-    isReq = match Option.fromNullishOr(Reflect.get(cObj, "required"))
-      | Some(req) => req #= true
-      | None => false
-      | _ => false
-    req = match isReq
-      | true => "Yes"
-      | false => "No "
-      | _ => "No "
+    isOk = Option.fromNullishOr(Reflect.get(cObj, "ok")) |> Option.map((ok) => ok #= true) |> Option.getOrElse(() => false)
+    status = statusTag(isOk)
+    isReq = Option.fromNullishOr(Reflect.get(cObj, "required")) |> Option.map((req) => req #= true) |> Option.getOrElse(() => false)
+    req = requiredTag(isReq)
     name = ("" + Reflect.get(cObj, "name")) |> String.padEnd(12)
     msg = "" + Reflect.get(cObj, "message")
     => status + "  | " + name + " | " + req + "      | " + msg
   })
-  isHealthy = match Option.fromNullishOr(Reflect.get(repObj, "isHealthy"))
-    | Some(h) => h #= true
-    | None => false
-    | _ => false
-  health = match isHealthy
-    | true => "HEALTHY"
-    | false => "UNHEALTHY"
-    | _ => "UNHEALTHY"
+  isHealthy = Option.fromNullishOr(Reflect.get(repObj, "isHealthy")) |> Option.map((h) => h #= true) |> Option.getOrElse(() => false)
+  health = healthTag(isHealthy)
   allLines = lines |> Array.appendAll(checkLines) |> Array.append("--------------------------------------------------------------------------------") |> Array.append("Overall Health: " + health)
   => allLines |> Array.join("\n")
 }
 
-export getHelpMessage = (subcommand?: String): String =>
-  sub = match Option.fromNullishOr(subcommand)
-    | Some(s) => s
-    | None => ""
-  match sub
-    | "doctor" => [
-        "Usage: slopboss2 doctor [options] [path]",
-        "",
-        "Run system diagnostics and verify dependencies.",
-        "",
-        "Options:",
-        "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
-        "  -h, --help        Show help for doctor command"
-      ] |> Array.join("\n")
-    | "run" => [
-        "Usage: slopboss2 run [options] [path]",
-        "",
-        "Acquire board coordination lock and start autonomous dispatcher reconciler loop.",
-        "",
-        "Options:",
-        "  -d, --dir <path>      Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
-        "  --detach              Run reconciler process in the background",
-        "  --iterations <n>      Number of reconciliation iterations before exiting (alias for max-ticks)",
-        "  --max-ticks <n>       Maximum ticks before exiting (0 for infinite)",
-        "  --poll-interval <ms>  Milliseconds between reconciliation ticks",
-        "  -h, --help            Show help for run command"
-      ] |> Array.join("\n")
-    | "init" => [
-        "Usage: slopboss2 init [options] [path]",
-        "",
-        "Provision board structure, markdown files, and workspaces.",
-        "",
-        "Options:",
-        "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
-        "  -r, --repo <url>  Target git repository URL to clone into workspaces",
-        "  -a, --agents <n>  Number of dev agents to provision (default: 2)",
-        "  -h, --help        Show help for init command"
-      ] |> Array.join("\n")
-    | "setup" => [
-        "Usage: slopboss2 init [options] [path]",
-        "",
-        "Provision board structure, markdown files, and workspaces.",
-        "",
-        "Options:",
-        "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
-        "  -r, --repo <url>  Target git repository URL to clone into workspaces",
-        "  -a, --agents <n>  Number of dev agents to provision (default: 2)",
-        "  -h, --help        Show help for init command"
-      ] |> Array.join("\n")
-    | "groom" => [
-        "Usage: slopboss2 groom [options] [path]",
-        "",
-        "Launch interactive Team Lead grooming session with Antigravity (agy).",
-        "",
-        "Options:",
-        "  -d, --dir <path>   Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
-        "  -m, --model <name> Override agent model",
-        "  -h, --help         Show help for groom command"
-      ] |> Array.join("\n")
-    | "status" => [
-        "Usage: slopboss2 status [options] [path]",
-        "",
-        "Display board execution status.",
-        "",
-        "Options:",
-        "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
-        "  -h, --help        Show help for status command"
-      ] |> Array.join("\n")
-    | "view" => [
-        "Usage: slopboss2 view [options] [path]",
-        "",
-        "Launch interactive terminal dashboard live view.",
-        "",
-        "Options:",
-        "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
-        "  -h, --help        Show help for view command"
-      ] |> Array.join("\n")
-    | _ => [
-        "slopboss2 - Autonomous multi-agent orchestrator",
-        "",
-        "Usage:",
-        "  slopboss2 <command> [options]",
-        "",
-        "Commands:",
-        "  doctor [--dir <path>]            Run diagnostics and verify system dependencies",
-        "  run [--dir <path>] [--detach]    Acquire lock and start the dispatcher reconciler loop",
-        "  init [--dir <path>] [--repo <url>] Provision board structure and agent workspaces",
-        "  groom [--dir <path>]             Launch interactive Team Lead grooming session",
-        "  status [--dir <path>]            Display board execution status",
-        "  view [--dir <path>]              Launch interactive terminal dashboard live view",
-        "",
-        "Options:",
-        "  -h, --help                       Show help information",
-        "  -v, --version                    Show version"
-      ] |> Array.join("\n")
+export getHelpMessage = (subcommand?: String): String => {
+  sub = Option.fromNullishOr(subcommand) |> Option.getOrElse(() => "")
+  when (sub #= "doctor") => [
+    "Usage: slopboss2 doctor [options] [path]",
+    "",
+    "Run system diagnostics and verify dependencies.",
+    "",
+    "Options:",
+    "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
+    "  -h, --help        Show help for doctor command"
+  ] |> Array.join("\n")
+  when (sub #= "run") => [
+    "Usage: slopboss2 run [options] [path]",
+    "",
+    "Acquire board coordination lock and start autonomous dispatcher reconciler loop.",
+    "",
+    "Options:",
+    "  -d, --dir <path>      Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
+    "  --detach              Run reconciler process in the background",
+    "  --iterations <n>      Number of reconciliation iterations before exiting (alias for max-ticks)",
+    "  --max-ticks <n>       Maximum ticks before exiting (0 for infinite)",
+    "  --poll-interval <ms>  Milliseconds between reconciliation ticks",
+    "  -h, --help            Show help for run command"
+  ] |> Array.join("\n")
+  when (sub #= "init" or sub #= "setup") => [
+    "Usage: slopboss2 init [options] [path]",
+    "",
+    "Provision board structure, markdown files, and workspaces.",
+    "",
+    "Options:",
+    "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
+    "  -r, --repo <url>  Target git repository URL to clone into workspaces",
+    "  -a, --agents <n>  Number of dev agents to provision (default: 2)",
+    "  -h, --help        Show help for init command"
+  ] |> Array.join("\n")
+  when (sub #= "groom") => [
+    "Usage: slopboss2 groom [options] [path]",
+    "",
+    "Launch interactive Team Lead grooming session with Antigravity (agy).",
+    "",
+    "Options:",
+    "  -d, --dir <path>   Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
+    "  -m, --model <name> Override agent model",
+    "  -h, --help         Show help for groom command"
+  ] |> Array.join("\n")
+  when (sub #= "status") => [
+    "Usage: slopboss2 status [options] [path]",
+    "",
+    "Display board execution status.",
+    "",
+    "Options:",
+    "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
+    "  -h, --help        Show help for status command"
+  ] |> Array.join("\n")
+  when (sub #= "view") => [
+    "Usage: slopboss2 view [options] [path]",
+    "",
+    "Launch interactive terminal dashboard live view.",
+    "",
+    "Options:",
+    "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
+    "  -h, --help        Show help for view command"
+  ] |> Array.join("\n")
+  => [
+    "slopboss2 - Autonomous multi-agent orchestrator",
+    "",
+    "Usage:",
+    "  slopboss2 <command> [options]",
+    "",
+    "Commands:",
+    "  doctor [--dir <path>]            Run diagnostics and verify system dependencies",
+    "  run [--dir <path>] [--detach]    Acquire lock and start the dispatcher reconciler loop",
+    "  init [--dir <path>] [--repo <url>] Provision board structure and agent workspaces",
+    "  groom [--dir <path>]             Launch interactive Team Lead grooming session",
+    "  status [--dir <path>]            Display board execution status",
+    "  view [--dir <path>]              Launch interactive terminal dashboard live view",
+    "",
+    "Options:",
+    "  -h, --help                       Show help information",
+    "  -v, --version                    Show version"
+  ] |> Array.join("\n")
+}
 
 schema RawParsedOptions = {
   dir: Option<String>
@@ -330,123 +295,133 @@ parseTokens = (subcommand: String, tokens: Array<String>, acc: RawParsedOptions)
   when (head #= "") => parseTokens(subcommand, tail, acc)
 
   isFlag = head |> String.startsWith("-")
-  match isFlag
-    | true =>
-      match subcommand
-        | "doctor" =>
-          match head
-            | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-        | "run" =>
-          match head
-            | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "--detach" => parseTokens(subcommand, tail, { ...acc, detach: true })
-            | "--max-ticks" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
-            | "maxTicks" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
-            | "--iterations" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
-            | "--poll-interval" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
-            | "pollInterval" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
-            | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-        | "init" =>
-          match head
-            | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "--repo" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-            | "-r" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-            | "--agents" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
-            | "-a" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
-            | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-        | "setup" =>
-          match head
-            | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "--repo" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-            | "-r" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-            | "--agents" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
-            | "-a" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
-            | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-        | "groom" =>
-          match head
-            | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "--model" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
-            | "-m" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
-            | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-        | "status" =>
-          match head
-            | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-        | "view" =>
-          match head
-            | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-            | "--poll-interval" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
-            | "pollInterval" =>
-              valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
-              valNum = Number.parse(valStr)
-              parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
-            | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
-            | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
+  when (not isFlag) => parseTokens(subcommand, tail, { ...acc, positionals: acc.positionals |> Array.append(head) })
+
+  match subcommand
+    | "doctor" =>
+      match head
+        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
         | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
-    | false =>
-      parseTokens(subcommand, tail, { ...acc, positionals: acc.positionals |> Array.append(head) })
+    | "run" =>
+      match head
+        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "--detach" => parseTokens(subcommand, tail, { ...acc, detach: true })
+        | "--max-ticks" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
+        | "maxTicks" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
+        | "--iterations" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: valNum })
+        | "--poll-interval" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
+        | "pollInterval" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
+        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
+    | "init" =>
+      match head
+        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "--repo" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
+        | "-r" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
+        | "--agents" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
+        | "-a" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
+        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
+    | "setup" =>
+      match head
+        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "--repo" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
+        | "-r" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
+        | "--agents" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
+        | "-a" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "2")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: valNum })
+        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
+    | "groom" =>
+      match head
+        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "--model" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
+        | "-m" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
+        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
+    | "status" =>
+      match head
+        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
+    | "view" =>
+      match head
+        | "--dir" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "-d" => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
+        | "--poll-interval" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
+        | "pollInterval" =>
+          valStr = tail |> Array.get(0) |> Option.getOrElse(() => "0")
+          valNum = Number.parse(valStr)
+          parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: valNum })
+        | "--help" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | "-h" => parseTokens(subcommand, tail, { ...acc, help: true })
+        | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
+    | _ => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
 
-export parseCliArgs = (argv?: Array<String>) =>
-  args = match Option.fromNullishOr(argv)
-    | Some(a) => a
-    | None => []
+isKnownSubcommand = (cmd: String): Boolean => {
+  when (cmd #= "doctor") => true
+  when (cmd #= "run") => true
+  when (cmd #= "init") => true
+  when (cmd #= "setup") => true
+  when (cmd #= "groom") => true
+  when (cmd #= "status") => true
+  when (cmd #= "view") => true
+  => false
+}
 
+normalizeSubcommand = (cmd: String): String => {
+  when (cmd #= "setup") => "init"
+  => cmd
+}
+
+export parseCliArgs = (argv?: Array<String>) => {
+  args = Option.fromNullishOr(argv) |> Option.getOrElse(() => [])
   when (args.length #= 0) => { command: "help", type: "help" }
 
   first = args |> Array.get(0) |> Option.getOrElse(() => "")
-  when (first #= "--help") => { command: "help", type: "help" }
-  when (first #= "-h") => { command: "help", type: "help" }
+  when (first #= "--help" or first #= "-h") => { command: "help", type: "help" }
 
   subArgs = args |> Array.drop(1)
   subHelp = subArgs |> Array.get(0)
@@ -460,27 +435,14 @@ export parseCliArgs = (argv?: Array<String>) =>
     type: "help"
   }
 
-  isKnownCmd = match first
-    | "doctor" => true
-    | "run" => true
-    | "init" => true
-    | "setup" => true
-    | "groom" => true
-    | "status" => true
-    | "view" => true
-    | _ => false
-
-  when (not isKnownCmd) => {
+  when (not isKnownSubcommand(first)) => {
     command: "invalid",
     type: "invalid",
     error: "Unknown command: " + first
   }
 
   parsed = parseTokens(first, subArgs, emptyAcc())
-
-  normCmd = match first
-    | "setup" => "init"
-    | _ => first
+  normCmd = normalizeSubcommand(first)
 
   when (Option.isSome(parsed.unknownOpt)) => {
     command: "invalid",
@@ -489,43 +451,33 @@ export parseCliArgs = (argv?: Array<String>) =>
     subcommand: normCmd
   }
 
-  firstPos = parsed.positionals |> Array.get(0)
-  resolvedDir = match parsed.dir
-    | Some(d) => d
-    | None =>
-      match firstPos
-        | Some(p) => p
-        | None => DEFAULT_BOARD_DIR
+  resolvedDir = parsed.dir |> Option.orElse(() => parsed.positionals |> Array.head) |> Option.getOrElse(() => DEFAULT_BOARD_DIR)
 
-  match normCmd
-    | "doctor" =>
-      { command: "doctor", type: "doctor", dir: resolvedDir, help: parsed.help }
-    | "run" =>
-      {
-        command: "run",
-        type: "run",
-        dir: resolvedDir,
-        detach: parsed.detach,
-        maxTicks: Option.getOrUndefined(parsed.maxTicks),
-        pollIntervalMs: Option.getOrUndefined(parsed.pollIntervalMs),
-        help: parsed.help
-      }
-    | "init" =>
-      repo = match parsed.repoUrl
-        | Some(r) => r
-        | None => "https://github.com/de-angelov/slopboss2.git"
-      agentCount = match parsed.agents
-        | Some(a) => a
-        | None => 2
-      { command: "init", type: "init", dir: resolvedDir, repoUrl: repo, agents: agentCount, help: parsed.help }
-    | "groom" =>
-      { command: "groom", type: "groom", dir: resolvedDir, model: Option.getOrUndefined(parsed.model), help: parsed.help }
-    | "status" =>
-      { command: "status", type: "status", dir: resolvedDir, help: parsed.help }
-    | "view" =>
-      { command: "view", type: "view", dir: resolvedDir, pollIntervalMs: Option.getOrUndefined(parsed.pollIntervalMs), help: parsed.help }
-    | _ =>
-      { command: "invalid", type: "invalid", error: "Unknown command: " + first }
+  repo = parsed.repoUrl |> Option.getOrElse(() => "https://github.com/de-angelov/slopboss2.git")
+  agentCount = parsed.agents |> Option.getOrElse(() => 2)
+
+  when (normCmd #= "doctor") => { command: "doctor", type: "doctor", dir: resolvedDir, help: parsed.help }
+
+  when (normCmd #= "run") => {
+    command: "run",
+    type: "run",
+    dir: resolvedDir,
+    detach: parsed.detach,
+    maxTicks: Option.getOrUndefined(parsed.maxTicks),
+    pollIntervalMs: Option.getOrUndefined(parsed.pollIntervalMs),
+    help: parsed.help
+  }
+
+  when (normCmd #= "init") => { command: "init", type: "init", dir: resolvedDir, repoUrl: repo, agents: agentCount, help: parsed.help }
+
+  when (normCmd #= "groom") => { command: "groom", type: "groom", dir: resolvedDir, model: Option.getOrUndefined(parsed.model), help: parsed.help }
+
+  when (normCmd #= "status") => { command: "status", type: "status", dir: resolvedDir, help: parsed.help }
+
+  when (normCmd #= "view") => { command: "view", type: "view", dir: resolvedDir, pollIntervalMs: Option.getOrUndefined(parsed.pollIntervalMs), help: parsed.help }
+
+  => { command: "invalid", type: "invalid", error: "Unknown command: " + first }
+}
 
 export printStatus = (boardDir: String) => effect {
   _ <- Console.log("=== SLOPBOSS2 BOARD STATUS ===")
@@ -553,20 +505,25 @@ export runSetupFun = (boardDir: String, repoUrl: String) => runSetup(boardDir, r
 
 fallbackSpawnFn = () => Bun.spawn
 
-export launchInteractiveGroom = (boardDir: String, model?: Any, spawnFn?: Any) => effect {
-  resolvedModel: Option<String> = match Option.fromNullishOr(model)
+resolveModelOption = (modelOpt: Option<Any>): Option<String> =>
+  match modelOpt
     | Some(m) => match Option.isOption(m)
         | true => m
         | false => Option.some("" + m)
         | _ => Option.none()
     | None => Option.none()
     | _ => Option.none()
+readBacklogTextWorkflow = (boardDir: String) => effect {
   fileObj = Bun.file(boardDir + "/BACKLOG.md")
   exists <- Effect.promise(() => fileObj.exists())
-  backlogText <- match exists
-    | true => Effect.promise(() => fileObj.text())
-    | false => Effect.succeed("")
-    | _ => Effect.succeed("")
+  when (not exists) => ""
+  txt <- Effect.promise(() => fileObj.text())
+  => txt
+}
+
+export launchInteractiveGroom = (boardDir: String, model?: Any, spawnFn?: Any) => effect {
+  resolvedModel = resolveModelOption(Option.fromNullishOr(model))
+  backlogText <- readBacklogTextWorkflow(boardDir)
   prompt = buildGroomPrompt(boardDir, backlogText)
   agyCmd = buildInteractiveCommand(resolvedModel, prompt)
   _ <- Console.log("Starting interactive Team Lead grooming session...")
@@ -603,77 +560,62 @@ fallbackIter = () => 0
 fallbackMock = () => false
 fallbackViewOpts = () => ({})
 
-export runReconcilerCommand = (dir: String, detach: Boolean = false, options?: Any, maxTicks?: Number, pollIntervalMs?: Number) => effect {
+safelyUnrefProcess = (procObj: Any, proc: Any) => {
+  unrefFn: Any = Reflect.get(procObj, "unref")
+  when (not Predicate.isFunction(unrefFn)) => globalThis.undefined
+  => Reflect.apply(unrefFn, proc, [])
+}
+
+runReconcilerDetached = (dir: String, rawOptsObj: Any) => effect {
+  spawnFnActual: Any = Option.getOrElse(Option.fromNullishOr(Reflect.get(rawOptsObj, "spawnFn")), fallbackSpawnFn)
+  procArgv = getProcessArgv()
+  binPath = procArgv |> Array.get(1) |> Option.getOrElse(fallbackBinPath)
+  execPath = getProcessExecPath()
+  execArgs = [execPath, "run", binPath, "run", "--dir", dir]
+  spawnOpts = {
+    detached: true,
+    stdio: ["ignore", "ignore", "ignore"]
+  }
+  proc: Any = Reflect.apply(spawnFnActual, globalThis.undefined, [execArgs, spawnOpts])
+  procObj: Any = globalThis.Object(proc)
+  _unused = safelyUnrefProcess(procObj, proc)
+  procPid: Unknown = Reflect.get(procObj, "pid")
+  _ <- Console.log("[SLOPBOSS2] Started reconciler daemon in background (PID: " + globalThis.String(procPid) + ")")
+  => { detached: true, pid: procPid }
+}
+
+runReconcilerForeground = (dir: String, rawOptsObj: Any, maxTicks?: Number, pollIntervalMs?: Number) => effect {
+  _ <- Console.log("[SLOPBOSS2] Starting dispatcher reconciler loop for board: " + dir)
+  rawOptsPoll: Any = Reflect.get(rawOptsObj, "pollIntervalMs")
+  pollVal = Option.fromNullishOr(pollIntervalMs) |> Option.orElse(() => Option.fromNullishOr(rawOptsPoll)) |> Option.map((p) => globalThis.Number(p)) |> Option.getOrElse(() => 1000)
+
+  rawOptsIter: Any = Reflect.get(rawOptsObj, "maxIterations")
+  iterVal = Option.fromNullishOr(maxTicks) |> Option.orElse(() => Option.fromNullishOr(rawOptsIter)) |> Option.map((m) => globalThis.Number(m)) |> Option.getOrElse(() => 0)
+
+  rawMock: Any = Reflect.get(rawOptsObj, "mockRunner")
+  mockOpt = Option.fromNullishOr(rawMock) |> Option.map((m) => m #= true)
+
+  runnerOpt: Option<Any> = Option.fromNullishOr(Reflect.get(rawOptsObj, "runnerFn"))
+
+  config: ReconcilerConfig = {
+    boardDir: dir,
+    pollIntervalMs: pollVal,
+    maxIterations: iterVal,
+    devAgentCount: 2,
+    baseBranch: Option.none(),
+    mockRunner: mockOpt,
+    runnerFn: runnerOpt,
+    mergeQueue: Option.none()
+  }
+  r <- runReconcilerLoop(config)
+  => r
+}
+
+export runReconcilerCommand = (dir: String, detach: Boolean = false, options?: Any, maxTicks?: Number, pollIntervalMs?: Number) => {
   rawOpts: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
   rawOptsObj: Any = rawOpts
-  res <- match detach
-    | true => effect {
-        spawnFnActual: Any = Option.getOrElse(Option.fromNullishOr(Reflect.get(rawOptsObj, "spawnFn")), fallbackSpawnFn)
-        procArgv = getProcessArgv()
-        binPath = match procArgv |> Array.get(1)
-          | Some(bp) => bp
-          | None => fallbackBinPath()
-          | _ => fallbackBinPath()
-        execPath = getProcessExecPath()
-        execArgs = [execPath, "run", binPath, "run", "--dir", dir]
-        spawnOpts = {
-          detached: true,
-          stdio: ["ignore", "ignore", "ignore"]
-        }
-        proc: Any = Reflect.apply(spawnFnActual, Option.none(), [execArgs, spawnOpts])
-        procObj: Any = proc
-        unrefFn: Any = Reflect.get(procObj, "unref")
-        _unused: Unknown = match Predicate.isFunction(unrefFn)
-          | true => Reflect.apply(unrefFn, proc, [])
-          | false => Option.none()
-          | _ => Option.none()
-        procPid: Unknown = Reflect.get(procObj, "pid")
-        _ <- Console.log("[SLOPBOSS2] Started reconciler daemon in background (PID: " + procPid + ")")
-        => { detached: true, pid: procPid }
-    }
-    | false => effect {
-        _ <- Console.log("[SLOPBOSS2] Starting dispatcher reconciler loop for board: " + dir)
-        rawOptsPoll: Unknown = Reflect.get(rawOptsObj, "pollIntervalMs")
-        pollVal: Number = match Option.fromNullishOr(pollIntervalMs)
-          | Some(p) => Number.parse("" + p) |> Option.getOrElse(() => 1000)
-          | None => match Option.fromNullishOr(rawOptsPoll)
-              | Some(p) => Number.parse("" + p) |> Option.getOrElse(() => 1000)
-              | None => 1000
-              | _ => 1000
-          | _ => 1000
-        rawOptsIter: Unknown = Reflect.get(rawOptsObj, "maxIterations")
-        iterVal: Number = match Option.fromNullishOr(maxTicks)
-          | Some(m) => Number.parse("" + m) |> Option.getOrElse(() => 0)
-          | None => match Option.fromNullishOr(rawOptsIter)
-              | Some(m) => Number.parse("" + m) |> Option.getOrElse(() => 0)
-              | None => 0
-              | _ => 0
-          | _ => 0
-        rawMock: Unknown = Reflect.get(rawOptsObj, "mockRunner")
-        mockOpt: Option<Boolean> = match Option.fromNullishOr(rawMock)
-          | Some(m) => Option.some(m #= true)
-          | None => Option.none()
-          | _ => Option.none()
-        rawRunnerFn: Unknown = Reflect.get(rawOptsObj, "runnerFn")
-        runnerOpt: Option<Unknown> = match Option.fromNullishOr(rawRunnerFn)
-          | Some(r) => Option.some(r)
-          | None => Option.none()
-          | _ => Option.none()
-        config: ReconcilerConfig = {
-          boardDir: dir,
-          pollIntervalMs: pollVal,
-          maxIterations: iterVal,
-          devAgentCount: 2,
-          baseBranch: Option.none(),
-          mockRunner: mockOpt,
-          runnerFn: runnerOpt,
-          mergeQueue: Option.none()
-        }
-        r <- runReconcilerLoop(config)
-        => r
-    }
-    | _ => effect { => Option.none() }
-  => res
+  when (detach) => runReconcilerDetached(dir, rawOptsObj)
+  => runReconcilerForeground(dir, rawOptsObj, maxTicks, pollIntervalMs)
 }
 
 export runInitCommand = (dir: String, repoUrl: String = "https://github.com/de-angelov/slopboss2.git", agents: Number = 2) => effect {
@@ -727,15 +669,10 @@ failUnknownCommand = (cmdName: String) => effect {
 handleHelp = (cmd: Any) => effect {
   obj: Any = cmd
   rawCmd = "" + Reflect.get(obj, "command")
-  isHelpCmd = rawCmd #= "help"
-  subOpt: Option<String> = match isHelpCmd
-    | true => match Option.fromNullishOr(Reflect.get(obj, "subcommand"))
-        | Some(s) => Option.some("" + s)
-        | None => Option.none()
-        | _ => Option.none()
-    | false => Option.some(rawCmd)
-    | _ => Option.none()
-  helpMsg = getHelpMessage(Option.getOrUndefined(subOpt))
+  subStr = match rawCmd #= "help"
+    | true => Option.fromNullishOr(Reflect.get(obj, "subcommand")) |> Option.map((s) => "" + s) |> Option.getOrUndefined
+    | false => rawCmd
+  helpMsg = getHelpMessage(subStr)
   _ <- Console.log(helpMsg)
   => { help: true, output: helpMsg }
 }
@@ -743,16 +680,10 @@ handleHelp = (cmd: Any) => effect {
 handleInvalid = (cmd: Any) => effect {
   obj: Any = cmd
   errRaw: Unknown = Reflect.get(obj, "error")
-  errText = match Option.fromNullishOr(errRaw)
-    | Some(e) => "" + e
-    | None => "Unknown error"
-    | _ => "Unknown error"
+  errText = Option.fromNullishOr(errRaw) |> Option.map((e) => "" + e) |> Option.getOrElse(() => "Unknown error")
   errMsg = "Error: " + errText
   _ <- Console.error(errMsg)
-  subOpt: Option<String> = match Option.fromNullishOr(Reflect.get(obj, "subcommand"))
-    | Some(s) => Option.some("" + s)
-    | None => Option.none()
-    | _ => Option.none()
+  subOpt = Option.fromNullishOr(Reflect.get(obj, "subcommand")) |> Option.map((s) => "" + s)
   _ <- Console.log(getHelpMessage(Option.getOrUndefined(subOpt)))
   _ <- Effect.fail(CliCommandError({ message: errText }))
   => { help: false, output: errMsg }
@@ -761,99 +692,52 @@ handleInvalid = (cmd: Any) => effect {
 runViewCommandWithOpts = (cmd: Any, options?: Any) => {
   obj: Any = cmd
   rawOpts: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
-  dirStr = match Option.fromNullishOr(Reflect.get(obj, "dir"))
-    | Some(d) => "" + d
-    | None => DEFAULT_BOARD_DIR
-    | _ => DEFAULT_BOARD_DIR
-  rawCmdPoll: Unknown = Reflect.get(obj, "pollIntervalMs")
-  rawOptsPoll: Unknown = Reflect.get(rawOpts, "pollIntervalMs")
-  pollValNum: Number = match Option.fromNullishOr(rawCmdPoll)
-    | Some(p) => Number.parse("" + p) |> Option.getOrElse(() => 1000)
-    | None => match Option.fromNullishOr(rawOptsPoll)
-        | Some(p) => Number.parse("" + p) |> Option.getOrElse(() => 1000)
-        | None => 1000
-        | _ => 1000
-    | _ => 1000
-  viewOptsRaw: Any = Reflect.get(rawOpts, "viewOptions")
-  viewOpts: LiveViewOptions = match Option.fromNullishOr(viewOptsRaw)
+  dirStr = Option.fromNullishOr(Reflect.get(obj, "dir")) |> Option.map((d) => "" + d) |> Option.getOrElse(() => DEFAULT_BOARD_DIR)
+  rawCmdPoll: Option<Any> = Option.fromNullishOr(Reflect.get(obj, "pollIntervalMs"))
+  rawOptsPoll: Option<Any> = Option.fromNullishOr(Reflect.get(rawOpts, "pollIntervalMs"))
+  pollValNum = rawCmdPoll |> Option.orElse(() => rawOptsPoll) |> Option.map((p) => Number(p)) |> Option.getOrElse(() => 1000)
+  viewOptsRaw: Option<Any> = Option.fromNullishOr(Reflect.get(rawOpts, "viewOptions"))
+  viewOpts: LiveViewOptions = match viewOptsRaw
     | Some(v) => v
     | None => defaultLiveViewOptions
     | _ => defaultLiveViewOptions
   => runViewCommand(dirStr, pollValNum, viewOpts)
 }
 
-export dispatchCli = (cmd: Any, options?: Any) => effect {
+resolveDispatchAction = (rawCmd: String, rawHelp: Boolean): String => {
+  when (rawCmd #= "help" or rawHelp) => "help"
+  => rawCmd
+}
+
+export dispatchCli = (cmd: Any, options?: Any) => {
   obj: Any = cmd
   rawCmd = "" + Reflect.get(obj, "command")
-  rawHelp = match Option.fromNullishOr(Reflect.get(obj, "help"))
-    | Some(h) => h #= true
-    | None => false
-    | _ => false
-  isHelpCmd = rawCmd #= "help"
-  dispatchAction = match isHelpCmd or rawHelp
-    | true => "help"
-    | false => rawCmd
-    | _ => rawCmd
+  rawHelp = Option.fromNullishOr(Reflect.get(obj, "help")) |> Option.map((h) => h #= true) |> Option.getOrElse(() => false)
+  dispatchAction = resolveDispatchAction(rawCmd, rawHelp)
 
   rawOptions: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
-  dirStr = match Option.fromNullishOr(Reflect.get(obj, "dir"))
-    | Some(d) => "" + d
-    | None => DEFAULT_BOARD_DIR
-    | _ => DEFAULT_BOARD_DIR
+  dirStr = Option.fromNullishOr(Reflect.get(obj, "dir")) |> Option.map((d) => "" + d) |> Option.getOrElse(() => DEFAULT_BOARD_DIR)
+  modelOpt = Option.fromNullishOr(Reflect.get(obj, "model")) |> Option.map((m) => "" + m)
+  rawDetach = Option.fromNullishOr(Reflect.get(obj, "detach")) |> Option.map((d) => d #= true) |> Option.getOrElse(() => false)
+  maxTicksOpt = Option.fromNullishOr(Reflect.get(obj, "maxTicks")) |> Option.flatMap((m) => Number.parse("" + m))
+  pollOpt = Option.fromNullishOr(Reflect.get(obj, "pollIntervalMs")) |> Option.flatMap((p) => Number.parse("" + p))
+  repoStr = Option.fromNullishOr(Reflect.get(obj, "repoUrl")) |> Option.map((r) => "" + r) |> Option.getOrElse(() => "https://github.com/de-angelov/slopboss2.git")
+  agentsNum = Option.fromNullishOr(Reflect.get(obj, "agents")) |> Option.flatMap((a) => Number.parse("" + a)) |> Option.getOrElse(() => 2)
 
-  rawModel: Unknown = Reflect.get(obj, "model")
-  modelOpt: Option<String> = match Option.fromNullishOr(rawModel)
-    | Some(m) => Option.some("" + m)
-    | None => Option.none()
-    | _ => Option.none()
-
-  rawDetach = match Option.fromNullishOr(Reflect.get(obj, "detach"))
-    | Some(d) => d #= true
-    | None => false
-    | _ => false
-  rawMaxTicks: Unknown = Reflect.get(obj, "maxTicks")
-  maxTicksOpt: Option<Number> = match Option.fromNullishOr(rawMaxTicks)
-    | Some(m) => Number.parse("" + m)
-    | None => Option.none()
-    | _ => Option.none()
-
-  rawPoll: Unknown = Reflect.get(obj, "pollIntervalMs")
-  pollOpt: Option<Number> = match Option.fromNullishOr(rawPoll)
-    | Some(p) => Number.parse("" + p)
-    | None => Option.none()
-    | _ => Option.none()
-
-  rawRepo: Unknown = Reflect.get(obj, "repoUrl")
-  repoStr = match Option.fromNullishOr(rawRepo)
-    | Some(r) => "" + r
-    | None => "https://github.com/de-angelov/slopboss2.git"
-    | _ => "https://github.com/de-angelov/slopboss2.git"
-
-  rawAgents: Unknown = Reflect.get(obj, "agents")
-  agentsNum = match Option.fromNullishOr(rawAgents)
-    | Some(a) => Number.parse("" + a) |> Option.getOrElse(() => 2)
-    | None => 2
-    | _ => 2
-
-  res <- match dispatchAction
-    | "help" => handleHelp(cmd)
-    | "invalid" => handleInvalid(cmd)
-    | "doctor" => runDoctorCommand(dirStr)
-    | "run" => runReconcilerCommand(dirStr, rawDetach, rawOptions, Option.getOrUndefined(maxTicksOpt), Option.getOrUndefined(pollOpt))
-    | "init" => runInitCommand(dirStr, repoStr, agentsNum)
-    | "groom" => runGroomCommand(dirStr, Option.getOrUndefined(modelOpt), rawOptions)
-    | "status" => printStatus(dirStr)
-    | "view" => runViewCommandWithOpts(cmd, Option.getOrUndefined(Option.fromNullishOr(options)))
-    | _ => failUnknownCommand(rawCmd)
-  => res
+  when (dispatchAction #= "help") => handleHelp(cmd)
+  when (dispatchAction #= "invalid") => handleInvalid(cmd)
+  when (dispatchAction #= "doctor") => runDoctorCommand(dirStr)
+  when (dispatchAction #= "run") => runReconcilerCommand(dirStr, rawDetach, rawOptions, Option.getOrUndefined(maxTicksOpt), Option.getOrUndefined(pollOpt))
+  when (dispatchAction #= "init") => runInitCommand(dirStr, repoStr, agentsNum)
+  when (dispatchAction #= "groom") => runGroomCommand(dirStr, Option.getOrUndefined(modelOpt), rawOptions)
+  when (dispatchAction #= "status") => printStatus(dirStr)
+  when (dispatchAction #= "view") => runViewCommandWithOpts(cmd, Option.getOrUndefined(Option.fromNullishOr(rawOptions)))
+  => failUnknownCommand(rawCmd)
 }
 
 export runCli = (argv?: Array<String>, options?: Any) => {
   fallbackArgs = getProcessArgv() |> Array.drop(2)
-  args = match Option.fromNullishOr(argv)
-    | Some(a) => a
-    | None => fallbackArgs
-    | _ => fallbackArgs
+  args = Option.fromNullishOr(argv) |> Option.getOrElse(() => fallbackArgs)
   parsed = parseCliArgs(args)
   opts: Unknown = Option.getOrUndefined(Option.fromNullishOr(options))
   => dispatchCli(parsed, opts)
