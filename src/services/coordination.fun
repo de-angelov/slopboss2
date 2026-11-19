@@ -16,7 +16,7 @@ runSyncEffect = <A>(eff: Effect.Effect<A, Never>): A => {
 
 export isPidAlive = (pid: Number) => {
   when (pid <= 0) => false
-  eff = Effect.try(() => globalThis.process.kill(pid, 0)) |> Effect.map(() => true) |> Effect.orElseSucceed(() => false)
+  eff = Effect.try(() => process.kill(pid, 0)) |> Effect.map(() => true) |> Effect.orElseSucceed(() => false)
   => runSyncEffect(eff)
 }
 
@@ -40,9 +40,9 @@ logAndRemoveLock = (fsService: FileSystem.FileSystem, lockPath: String, reason: 
 
 handleValidLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir: String, lock: BoardLock) => {
   when (lock.pid <= 0) => logAndRemoveLock(fsService, lockPath, "Corrupted lock file detected")
-  when (not isPidAlive(lock.pid)) => logAndRemoveLock(fsService, lockPath, "Stale lock detected for dead PID " + globalThis.String(lock.pid))
+  when (not isPidAlive(lock.pid)) => logAndRemoveLock(fsService, lockPath, "Stale lock detected for dead PID " + lock.pid)
   => Effect.fail(BoardLockedError({
-    message: "Board at " + boardDir + " is locked by active PID " + globalThis.String(lock.pid),
+    message: "Board at " + boardDir + " is locked by active PID " + lock.pid,
     pid: lock.pid
   }))
 }
@@ -96,7 +96,7 @@ acquireBoardLockScoped = (boardDir: String) => effect (unscoped) {
     | false => Effect.void
     | true => handleExistingLock(fsService, lockPath, boardDir)
 
-  currentPid: Number = globalThis.process.pid
+  currentPid: Number = process.pid
   currentTime <- Clock.currentTimeMillis
 
   lockData: String = Schema.encodeSync(BoardLockJson)({ pid: currentPid, timestamp: currentTime })

@@ -1,4 +1,4 @@
-import { Array, DateTime, Effect, FileSystem, Layer, Option, Path, Schema, String } from "effect"
+import { Array, DateTime, Effect, FileSystem, Layer, Option, Path, Record, Schema, String } from "effect"
 import * as fs from "node:fs"
 
 export schema TaskBlock = {
@@ -49,8 +49,13 @@ export BunServices = {
   layer: Layer.merge(Path.layer, Layer.succeed(FileSystem.FileSystem, BunFileSystem))
 }
 
-assignStore = (target: Record<String, Any>, source: Record<String, Any>) => {
-  res: Unknown = globalThis.Object.assign(target, source)
+assignStore = (target: Any, source: Any) => {
+  keys: Array<String> = Record.keys(source)
+  _ = keys |> Array.map((k) => {
+    v: Unknown = Reflect.get(source, k)
+    _ = Reflect.set(target, k, v)
+    => true
+  })
   => target
 }
 
@@ -60,7 +65,7 @@ export atomicWriteFileEffect = (filePath: String, content: String) => effect {
   dir = pathService.dirname(filePath)
   base = pathService.basename(filePath)
   _ <- fsService.makeDirectory(dir)
-  tempPath = pathService.join(dir, "." + base + ".tmp." + globalThis.String(DateTime.toEpochMillis(DateTime.nowUnsafe())) + "." + globalThis.Math.random().toString(36).slice(2))
+  tempPath = pathService.join(dir, "." + base + ".tmp." + process.pid + "." + DateTime.toEpochMillis(DateTime.nowUnsafe()))
   _ <- fsService.writeFileString(tempPath, content)
   _ <- fsService.rename(tempPath, filePath)
   => true
@@ -75,7 +80,7 @@ export atomicWriteFileSync = (filePath: String, content: String) => {
     | false => dir
   fs.mkdirSync(dirSafe, { recursive: true })
   base = filePath |> String.split("/") |> Array.last |> Option.getOrElse(() => "file")
-  tempPath = dirSafe + "/." + base + ".tmp." + globalThis.String(DateTime.toEpochMillis(DateTime.nowUnsafe())) + "." + globalThis.Math.random().toString(36).slice(2)
+  tempPath = dirSafe + "/." + base + ".tmp." + process.pid + "." + DateTime.toEpochMillis(DateTime.nowUnsafe())
   fs.writeFileSync(tempPath, content, "utf-8")
   fs.renameSync(tempPath, filePath)
   => true
@@ -111,8 +116,8 @@ export parseTaskBlockText = (rawBlock: String): TaskBlock => {
     currentSection: "none"
   }
 
-  cleanRx = globalThis.RegExp("^\\[|\\]$", "g")
-  splitRx = globalThis.RegExp("\\s+", "g")
+  cleanRx = RegExp("^\\[|\\]$", "g")
+  splitRx = RegExp("\\s+", "g")
 
   finalState = lines |> Array.reduce(initialState, (state, line) => {
     trimmed = line |> String.trim
@@ -329,9 +334,9 @@ export parseBacklogTasks = (content: String): Array<TaskBlock> => {
 
 export formatTaskBlock = (task: TaskBlock): String => {
   trimmedRaw = task.rawBody |> String.trim
-  statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
-  ownerRx = globalThis.RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
-  branchRx = globalThis.RegExp("(^|\\n)Branch:\\s*[^\\n]+", "g")
+  statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+  ownerRx = RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
+  branchRx = RegExp("(^|\\n)Branch:\\s*[^\\n]+", "g")
 
   res = match (trimmedRaw #! "")
     | true =>
@@ -426,7 +431,7 @@ formatDocumentOnly = (doc: TasksDocument): String => {
 }
 
 export formatTasksDocument = (docOrSections: Any, maybeHeader?: String): String => {
-  isArray = globalThis.Array.isArray(docOrSections)
+  isArray = Array.isArray(docOrSections)
   res = match isArray
     | true => formatSectionsOnly(docOrSections, maybeHeader)
     | false => formatDocumentOnly(docOrSections)
@@ -464,7 +469,7 @@ findTaskInBoardStore = (store: BoardStore, taskId: String): Option.Option<TaskBl
 }
 
 export findTask = (store: Any, taskId: String): Option.Option<TaskBlock> => {
-  isDoc = globalThis.Object.hasOwn(store, "sections")
+  isDoc = Record.has(store, "sections")
   res = match isDoc
     | true => findTaskInTasksDocument(store, taskId)
     | false => findTaskInBoardStore(store, taskId)
@@ -472,7 +477,7 @@ export findTask = (store: Any, taskId: String): Option.Option<TaskBlock> => {
 }
 
 updateStatusInSections = (sections: Array<MarkdownSection>, taskId: String, newStatus: String): Array<MarkdownSection> => {
-  statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+  statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
   res = sections |> Array.map((sec: MarkdownSection) => {
     updatedTasks = sec.tasks |> Array.map((task: TaskBlock) =>
       match (task.id #= taskId)
@@ -553,7 +558,7 @@ updateTaskStatusInTasksDocument = (doc: TasksDocument, taskId: String, newStatus
 }
 
 export updateTaskStatus = (store: Any, taskId: String, newStatus: String): Any => {
-  isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
+  isBoardStore = Record.has(store, "tasksDoc")
   res = match isBoardStore
     | true => updateTaskStatusInBoardStore(store, taskId, newStatus)
     | false => updateTaskStatusInTasksDocument(store, taskId, newStatus)
@@ -577,7 +582,7 @@ appendTaskInTasksDocument = (doc: TasksDocument, targetSectionTitle: String, tas
 }
 
 export appendTask = (store: Any, targetSectionTitle: String, task: TaskBlock): Any => {
-  isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
+  isBoardStore = Record.has(store, "tasksDoc")
   res = match isBoardStore
     | true => appendTaskInBoardStore(store, targetSectionTitle, task)
     | false => appendTaskInTasksDocument(store, targetSectionTitle, task)
@@ -724,8 +729,8 @@ moveTaskInTasksDocument = (doc: TasksDocument, taskId: String, targetSectionTitl
 
   finalTask = match isArchive
     | true =>
-        statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
-        statusDoneRx = globalThis.RegExp("(^|\\n)Status:\\s*Done", "i")
+        statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+        statusDoneRx = RegExp("(^|\\n)Status:\\s*Done", "i")
         raw1 = match (foundTask.rawBody #! "")
           | true => foundTask.rawBody |> String.replace(statusRx, "$1Status: Done")
           | false => foundTask.rawBody
@@ -746,8 +751,8 @@ moveTaskInTasksDocument = (doc: TasksDocument, taskId: String, targetSectionTitl
           | false => match (lowerTarget |> String.includes("backlog"))
             | true => "Backlog"
             | false => foundTask.status
-        statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
-        ownerRx = globalThis.RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
+        statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+        ownerRx = RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
         raw1 = match (foundTask.rawBody #! "")
           | true => foundTask.rawBody |> String.replace(statusRx, "$1Status: " + newStatus)
           | false => foundTask.rawBody
@@ -794,8 +799,8 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
 
   _ = match isArchive
     | true =>
-        statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
-        statusDoneRx = globalThis.RegExp("(^|\\n)Status:\\s*Done", "i")
+        statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+        statusDoneRx = RegExp("(^|\\n)Status:\\s*Done", "i")
         raw1 = match (foundTask.rawBody #! "")
           | true => foundTask.rawBody |> String.replace(statusRx, "$1Status: Done")
           | false => foundTask.rawBody
@@ -815,7 +820,7 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
           | true => curStore.archiveContent
           | false =>
               bullet = "- [x] " + finalTask.id + ": " + finalTask.title + "\n"
-              archiveRx = globalThis.RegExp("(# ARCHIVE[^\\n]*\\n\\n[^\\n]*\\n\\n)")
+              archiveRx = RegExp("(# ARCHIVE[^\\n]*\\n\\n[^\\n]*\\n\\n)")
               curStore.archiveContent |> String.replace(archiveRx, "$1" + bullet)
 
         finalStore = { ...curStore, archiveDoc: newArchiveDoc, archiveContent: newArchiveContent }
@@ -835,8 +840,8 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
             | true => "Backlog"
             | false => foundTask.status
 
-        statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
-        ownerRx = globalThis.RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
+        statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+        ownerRx = RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
         raw1 = match (foundTask.rawBody #! "")
           | true => foundTask.rawBody |> String.replace(statusRx, "$1Status: " + newStatus)
           | false => foundTask.rawBody
@@ -858,7 +863,7 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
 }
 
 export moveTask = (store: Any, taskId: String, targetSectionTitle: String): Any => {
-  isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
+  isBoardStore = Record.has(store, "tasksDoc")
   res = match isBoardStore
     | true => moveTaskInBoardStore(store, taskId, targetSectionTitle)
     | false => moveTaskInTasksDocument(store, taskId, targetSectionTitle)

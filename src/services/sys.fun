@@ -19,18 +19,19 @@ export schema NodeError = {
 export safeSpawnSync = (cmd: Array<String>, envOpt: Unknown = Option.none(), cwd: String = ""): SafeSpawnResult => {
   eff = Effect.try({
     "try": () => {
-      opts: Any = {}
-      match cwd #! ""
-        | true => globalThis.Object.assign(opts, { cwd: cwd })
-        | false => 0
-      match envOpt
-        | Some(e) => globalThis.Object.assign(opts, { env: globalThis.Object.assign({}, globalThis.process.env, e) })
-        | None => 0
-        | _ => match Option.fromNullishOr(envOpt)
-          | Some(e) => globalThis.Object.assign(opts, { env: globalThis.Object.assign({}, globalThis.process.env, e) })
-          | None => 0
-      cmdArray = globalThis.Array.from(cmd)
-      proc = globalThis.Bun.spawnSync(cmdArray, opts)
+      customEnv: Any = match envOpt
+        | Some(e) => e
+        | None => match Option.fromNullishOr(envOpt)
+          | Some(e) => e
+          | None => ({})
+          | _ => ({})
+        | _ => ({})
+      mergedEnv: Any = { ...process.env, ...customEnv }
+      opts = match cwd #! ""
+        | true => { cwd: cwd, env: mergedEnv }
+        | false => { env: mergedEnv }
+      cmdArray = [...cmd]
+      proc = Bun.spawnSync(cmdArray, opts)
       rawOut = match Option.fromNullishOr(proc.stdout)
         | Some(out) => out.toString()
         | None => ""
@@ -55,8 +56,8 @@ export safeSpawnSync = (cmd: Array<String>, envOpt: Unknown = Option.none(), cwd
       errMsg = match errDecoded
         | Some(e) => match e.message
           | Some(m) => m
-          | None => globalThis.String(err)
-        | None => globalThis.String(err)
+          | None => "" + err
+        | None => "" + err
       => {
         exitCode: 1,
         stdout: "",
@@ -77,16 +78,16 @@ export schema GitSubprocessResult = {
 
 export runGitCommandSync = (args: Array<String>, cwd: String = ""): GitSubprocessResult => {
   gitCmd = ["git"] |> Array.appendAll(args)
-  authorName = match Option.fromNullishOr(globalThis.process.env.GIT_AUTHOR_NAME)
+  authorName = match Option.fromNullishOr(process.env.GIT_AUTHOR_NAME)
     | Some(name) => name
     | None => "Slopboss"
-  authorEmail = match Option.fromNullishOr(globalThis.process.env.GIT_AUTHOR_EMAIL)
+  authorEmail = match Option.fromNullishOr(process.env.GIT_AUTHOR_EMAIL)
     | Some(email) => email
     | None => "slopboss@local"
-  committerName = match Option.fromNullishOr(globalThis.process.env.GIT_COMMITTER_NAME)
+  committerName = match Option.fromNullishOr(process.env.GIT_COMMITTER_NAME)
     | Some(name) => name
     | None => "Slopboss"
-  committerEmail = match Option.fromNullishOr(globalThis.process.env.GIT_COMMITTER_EMAIL)
+  committerEmail = match Option.fromNullishOr(process.env.GIT_COMMITTER_EMAIL)
     | Some(email) => email
     | None => "slopboss@local"
   envObj = {
@@ -166,22 +167,28 @@ calcAccessMode = (opt: Unknown = 0): Number => {
   => r + w
 }
 
-makeBaseInfo = (t: ("Directory" | "File" | "Unknown"), sizeNum: Number) => ({
-  type: t,
-  mtime: Option.none(),
-  atime: Option.none(),
-  birthtime: Option.none(),
-  dev: globalThis.BigInt(0),
-  ino: Option.none(),
-  mode: 0,
-  nlink: Option.none(),
-  uid: Option.none(),
-  gid: Option.none(),
-  rdev: Option.none(),
-  size: ByteSize.bytes(sizeNum),
-  blksize: Option.none(),
-  blocks: Option.none()
-})
+makeBaseInfo = (t: ("Directory" | "File" | "Unknown"), sizeNum: Number) => {
+  devVal: Any = match BigInt.fromNumber(0)
+    | Some(n) => n
+    | None => 0
+    | _ => 0
+  => {
+    type: t,
+    mtime: Option.none(),
+    atime: Option.none(),
+    birthtime: Option.none(),
+    dev: devVal,
+    ino: Option.none(),
+    mode: 0,
+    nlink: Option.none(),
+    uid: Option.none(),
+    gid: Option.none(),
+    rdev: Option.none(),
+    size: ByteSize.bytes(sizeNum),
+    blksize: Option.none(),
+    blocks: Option.none()
+  }
+}
 
 makeDirInfo = (sizeNum: Number) => makeBaseInfo("Directory", sizeNum)
 makeFileInfo = (sizeNum: Number) => makeBaseInfo("File", sizeNum)

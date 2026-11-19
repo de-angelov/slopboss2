@@ -174,7 +174,7 @@ export buildDevAgentPromptFun = (boardDir: String, task: TaskBlock, agentName: S
 }
 
 formatActiveTasks = (activeTasks: Array<TaskBlock>) => {
-  pattern = globalThis.RegExp("\\n+", "g")
+  pattern = RegExp("\\n+", "g")
   taskLines = activeTasks |> Array.map((t: TaskBlock, idx: Number) => {
     owner = match (not t.owner or t.owner #= "")
       | true => "Unassigned"
@@ -200,7 +200,7 @@ formatActiveTasks = (activeTasks: Array<TaskBlock>) => {
       | true => "N/A"
       | false => t.objective |> String.replace(pattern, " ")
 
-    laneNum = globalThis.String(idx + 1)
+    laneNum = "" + (idx + 1)
     lines = [
       "Lane " + laneNum + " (" + owner + "):",
       "  - Task ID: " + t.id,

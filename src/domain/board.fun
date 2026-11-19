@@ -28,7 +28,7 @@ export parseTaskLine = (line: String) =>
     | t when t |> String.startsWith("- [x]") =>
       body = t |> String.substring(5) |> String.trim
       {
-        id: "TASK-" + globalThis.String(nowMs),
+        id: "TASK-" + nowMs,
         title: body,
         description: body,
         status: Done,
@@ -39,7 +39,7 @@ export parseTaskLine = (line: String) =>
     | t when t |> String.startsWith("- [/]") =>
       body = t |> String.substring(5) |> String.trim
       {
-        id: "TASK-" + globalThis.String(nowMs),
+        id: "TASK-" + nowMs,
         title: body,
         description: body,
         status: InProgress,
@@ -50,7 +50,7 @@ export parseTaskLine = (line: String) =>
     | t when t |> String.startsWith("- [ ]") =>
       body = t |> String.substring(5) |> String.trim
       {
-        id: "TASK-" + globalThis.String(nowMs),
+        id: "TASK-" + nowMs,
         title: body,
         description: body,
         status: Todo,

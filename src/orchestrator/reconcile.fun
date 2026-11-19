@@ -40,7 +40,7 @@ export initialOrchestratorState = (): OrchestratorState => {
 export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) => effect {
   state <- Ref.get(stateRef)
   newTick = state.tickCount + 1
-  _ <- Console.log("[TICK " + globalThis.String(newTick) + "] Polling board: " + boardDir)
+  _ <- Console.log("[TICK " + newTick + "] Polling board: " + boardDir)
   
   _ <- match state.tickCount
     | 0 => Console.log("  -> Dispatching: Dev Agent 1 on [SB2-03], Dev Agent 2 on [SB2-05]")
@@ -73,7 +73,7 @@ export startReconcileLoop = (boardDir: String, maxTicks: Number) => effect {
   repeated = tickEffect |> Effect.repeat(policy)
   result <- repeated
   finalState <- Ref.get(stateRef)
-  _ <- Console.log("Orchestrator completed " + globalThis.String(maxTicks) + " iterations. Final agent statuses:")
+  _ <- Console.log("Orchestrator completed " + maxTicks + " iterations. Final agent statuses:")
   hasAgents = (finalState.agents |> Array.length) > 0
   _ <- match hasAgents
     | true => Effect.forEach(finalState.agents, (a: AgentState) => Console.log("  " + a.id + ": " + a.status))

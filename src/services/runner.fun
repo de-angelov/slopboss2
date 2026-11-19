@@ -10,8 +10,8 @@ export schema SessionResult = {
 // Spawns a process wrapped in the caller's Effect Scope lifecycle.
 // On Scope exit (interruption, error, or completion), SIGTERM is sent to guarantee no orphaned processes.
 export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscoped) {
-  cmdArr = globalThis.Array.from(cmd)
-  proc = globalThis.Bun.spawn(cmdArr, {
+  cmdArray = [...cmd]
+  proc = Bun.spawn(cmdArray, {
     cwd: cwd,
     stdin: "pipe",
     stdout: "pipe",
@@ -19,7 +19,7 @@ export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscope
   })
 
   _ <- Effect.addFinalizer(() => effect {
-    _ <- Console.log("[SUPERVISOR] Terminating agent process pid=" + globalThis.String(proc.pid))
+    _ <- Console.log("[SUPERVISOR] Terminating agent process pid=" + proc.pid)
     _ = proc.kill("SIGTERM")
     => true
   })
@@ -38,7 +38,7 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
       proc.stdin.end()
     | None =>
       proc.stdin.end()
-  rawOut <- js globalThis.Bun.readableStreamToText(proc.stdout)
+  rawOut <- js Bun.readableStreamToText(proc.stdout)
   outText = rawOut |> Option.flatMap(Schema.decodeUnknownOption(Schema.String)) |> Option.getOrElse(() => "")
   rawCode <- js proc.exited
   code = rawCode |> Option.flatMap(Schema.decodeUnknownOption(Schema.Number)) |> Option.getOrElse(() => 0)

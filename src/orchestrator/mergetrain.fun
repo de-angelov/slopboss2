@@ -58,7 +58,7 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
     }
 
   out <- res
-  _ <- Console.log("[MERGE TRAIN] Landing completed for " + req.taskId + " (success=" + globalThis.String(out.success) + ")")
+  _ <- Console.log("[MERGE TRAIN] Landing completed for " + req.taskId + " (success=" + out.success + ")")
   => out
 }
 

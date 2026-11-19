@@ -6,8 +6,6 @@
 // - effectOnly: string[] - Restricts directories to pure Effect workflows and types
 
 export config = {
-  noTs: [
-    "src/services",
-    "src/ui"
-  ]
+  noTs: true
+  noGlobalThis: true
 }

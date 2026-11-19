@@ -41,7 +41,7 @@ export checkGitInstalledWorkflow = (gitCmd: String) => effect {
     required: true
   }
   defaultErr = match res.stdout #= ""
-    | true => "git command exited with code " + globalThis.String(res.exitCode)
+    | true => "git command exited with code " + res.exitCode
     | false => res.stdout
   err = match res.stderr #= ""
     | true => defaultErr
@@ -88,7 +88,7 @@ export checkBunInstalledWorkflow = (bunCmd: String) => effect {
     required: true
   }
   defaultErr = match res.stdout #= ""
-    | true => "bun command exited with code " + globalThis.String(res.exitCode)
+    | true => "bun command exited with code " + res.exitCode
     | false => res.stdout
   err = match res.stderr #= ""
     | true => defaultErr

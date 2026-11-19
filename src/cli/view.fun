@@ -12,13 +12,13 @@ export schema LiveViewOptions = {
 
 safeInvoke = (target: Unknown, method: String, args: Array<Unknown>) => {
   res = Effect.try(() => {
-    obj: Any = globalThis.Object(target)
+    obj: Any = target
     fnObj: Any = Reflect.get(obj, method)
     isFn = Predicate.isFunction(fnObj)
     match isFn
       | true => Reflect.apply(fnObj, target, args)
-      | false => globalThis.undefined
-      | _ => globalThis.undefined
+      | false => Option.none()
+      | _ => Option.none()
     => true
   }) |> Effect.catch((_) => Effect.succeed(false)) |> Effect.runSync
   => res
@@ -30,7 +30,7 @@ readLanesAndStoreLogs = (boardDir: String) => {
     | Some(store) =>
         sections = store.tasksDoc.sections
         laneLogs: Array<String> = sections |> Array.flatMap((sec: MarkdownSection) => {
-          laneIdRaw = sec.name |> String.replace(globalThis.RegExp("\\s+In Progress$", "i"), "") |> String.trim
+          laneIdRaw = sec.name |> String.replace(RegExp("\\s+In Progress$", "i"), "") |> String.trim
           laneId = match laneIdRaw
             | "" => sec.name
             | id => id
@@ -50,7 +50,7 @@ readLanesAndStoreLogs = (boardDir: String) => {
         })
 
         lanes: Array<AgentLane> = sections |> Array.map((sec: MarkdownSection) => {
-          laneIdRaw = sec.name |> String.replace(globalThis.RegExp("\\s+In Progress$", "i"), "") |> String.trim
+          laneIdRaw = sec.name |> String.replace(RegExp("\\s+In Progress$", "i"), "") |> String.trim
           laneId = match laneIdRaw
             | "" => sec.name
             | id => id
@@ -203,23 +203,23 @@ extractMaxTicks = (opt: Option<Number>): Number =>
   match opt
     | Some(v) => match (v > 0)
         | true => v
-        | false => globalThis.Infinity
-        | _ => globalThis.Infinity
-    | None => globalThis.Infinity
+        | false => Infinity
+        | _ => Infinity
+    | None => Infinity
     | rawVal when Predicate.isNotNullish(rawVal) =>
-        num = globalThis.Number(rawVal)
+        num = Number(rawVal)
         match (num > 0)
           | true => num
-          | false => globalThis.Infinity
-          | _ => globalThis.Infinity
-    | _ => globalThis.Infinity
+          | false => Infinity
+          | _ => Infinity
+    | _ => Infinity
 
 runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions) => effect (unscoped) {
   stdin: Unknown = extractOption(options.stdin, process.stdin)
   stdout: Unknown = extractOption(options.stdout, process.stdout)
   maxTicks: Number = extractMaxTicks(options.maxTicks)
 
-  intervalMs = globalThis.Math.max(pollMs, 10)
+  intervalMs = Math.max(pollMs, 10)
 
   doneDeferred <- Deferred.make()
   tickCountRef <- Ref.make(0)
@@ -229,7 +229,7 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
     => true
   }
 
-  ctrlC = globalThis.String.fromCharCode(3)
+  ctrlC = Buffer.from([3]).toString()
   onData = (chunk: Unknown) => {
     str = "" + chunk
     isExitKey = str #= "q" or str #= "Q" or str #= ctrlC
@@ -255,10 +255,10 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
   _s4: Unknown = safeInvoke(stdin, "setEncoding", ["utf8"])
   _s5: Unknown = safeInvoke(stdin, "on", ["data", onData])
 
-  sigVal = extractOption(options.signal, globalThis.undefined)
+  sigVal = extractOption(options.signal, Option.none())
   _sig: Unknown = match Predicate.isNotNullish(sigVal)
     | true =>
-        sigObj: Any = globalThis.Object(sigVal)
+        sigObj: Any = sigVal
         abortedVal: Any = Reflect.get(sigObj, "aborted")
         aborted = Boolean(abortedVal)
         match aborted
@@ -281,9 +281,9 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
     state = readDashboardState(boardDir)
     output = renderFullDashboard(state)
     _w: Unknown = safeInvoke(stdout, "write", [output])
-    onTickVal = extractOption(options.onTick, globalThis.undefined)
+    onTickVal = extractOption(options.onTick, Option.none())
     _t: Unknown = match Predicate.isFunction(onTickVal)
-      | true => safeInvoke(onTickVal, "call", [globalThis.undefined, state, output])
+      | true => safeInvoke(onTickVal, "call", [Option.none(), state, output])
       | false => true
       | _ => true
     _d <- match (cntNum >= maxTicks)

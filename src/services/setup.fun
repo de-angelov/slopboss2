@@ -53,7 +53,7 @@ export runGitCommand = (args: Array<String>, cwd: String = "") => runGitCommandS
 export generateTasksMarkdown = (devAgentCount: Number = 2) =>
   count = Math.max(1, devAgentCount)
   header = "# TASKS\n\nActive work board for slopboss2.\n\n"
-  lanes = Array.range(1, count) |> Array.map((i) => "## Dev Agent " + globalThis.String(i) + " In Progress\n\n") |> Array.join("")
+  lanes = Array.range(1, count) |> Array.map((i) => "## Dev Agent " + i + " In Progress\n\n") |> Array.join("")
   => header + lanes
 
 export generateBacklogMarkdown = () => "# BACKLOG\n\nPending unassigned work for slopboss2.\n"
@@ -351,7 +351,7 @@ export provisionWorkspacesWorkflow = (boardDir: String, repoUrl: String, devAgen
 
   agentIndices = Array.range(1, count)
   agentResults <- agentIndices |> Effect.forEach((i) => effect {
-    agentWsName = "repo-agent-" + globalThis.String(i)
+    agentWsName = "repo-agent-" + i
     agentWsPath = path.join(workspacesDir, agentWsName)
     exAgent <- fs.exists(agentWsPath)
     _ <- initWorkspaceRepoWorkflow(agentWsPath, repoUrl, repoTlPath)
@@ -421,7 +421,7 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
     message: "Workspaces directory does not exist: " + workspacesDir
   }
 
-  agentNames = Array.range(1, count) |> Array.map((i) => "repo-agent-" + globalThis.String(i))
+  agentNames = Array.range(1, count) |> Array.map((i) => "repo-agent-" + i)
   workspaceNames = ["repo-tl"] |> Array.appendAll(agentNames)
 
   checkResults <- workspaceNames |> Effect.forEach((name) => effect {
@@ -492,7 +492,7 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
   failures = checkResults |> Array.flatMap((r) => r.failures)
 
   isOk = failures.length #= 0
-  successMsg = "All " + globalThis.String(workspaces.length) + " workspaces are ready on main branch"
+  successMsg = "All " + workspaces.length + " workspaces are ready on main branch"
   failMsg = "Workspace verification failed: " + (failures |> Array.join("; "))
   msg = match isOk
     | true => successMsg
@@ -524,7 +524,7 @@ export initBoardStructureWorkflow = (boardDir: String, repoUrl: String = "", dev
   verification <- verifyWorkspacesReadyWorkflow(boardDir, count)
 
   isOk = verification.ok
-  successMsg = "Board initialized successfully at " + boardDir + " with " + globalThis.String(workspacesCreated.length) + " workspaces created."
+  successMsg = "Board initialized successfully at " + boardDir + " with " + workspacesCreated.length + " workspaces created."
   warnMsg = "Board scaffolding created with workspace warnings: " + verification.message
   msg = match isOk
     | true => successMsg

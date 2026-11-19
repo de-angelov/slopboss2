@@ -126,23 +126,23 @@ getContentCompletedIds = (archiveContent: String): Array<String> => {
     | _ => ""
   when (content #= "") => []
 
-  bulletRx = globalThis.RegExp("- \\[x\\]\\s+([A-Za-z0-9_-]+):", "gi")
-  taskRx = globalThis.RegExp("Task ID:\\s*([A-Za-z0-9_-]+)", "gi")
+  bulletRx = RegExp("- \\[x\\]\\s+([A-Za-z0-9_-]+):", "gi")
+  taskRx = RegExp("Task ID:\\s*([A-Za-z0-9_-]+)", "gi")
 
-  matches1 = globalThis.Array.from(content.matchAll(bulletRx))
+  matches1 = Array.fromIterable(content.matchAll(bulletRx))
   initIds1: Array<String> = []
   ids1 = matches1 |> Array.reduce(initIds1, (acc, m) =>
     match Option.fromNullishOr(Reflect.get(m, 1))
-      | Some(id) => acc |> Array.append(globalThis.String(id))
+      | Some(id) => acc |> Array.append("" + id)
       | None => acc
       | _ => acc
   )
 
-  matches2 = globalThis.Array.from(content.matchAll(taskRx))
+  matches2 = Array.fromIterable(content.matchAll(taskRx))
   initIds2: Array<String> = []
   ids2 = matches2 |> Array.reduce(initIds2, (acc, m) =>
     match Option.fromNullishOr(Reflect.get(m, 1))
-      | Some(id) => acc |> Array.append(globalThis.String(id))
+      | Some(id) => acc |> Array.append("" + id)
       | None => acc
       | _ => acc
   )
@@ -158,7 +158,7 @@ getCompletedTaskIds = (store: BoardStore): Array<String> => {
 }
 
 zipIdleAndTasks = (agents: Array<IdleAgent>, tasks: Array<TaskBlock>): Array<PairItem> => {
-  minLen = globalThis.Math.min(agents.length, tasks.length)
+  minLen = Math.min(agents.length, tasks.length)
   when (minLen <= 0) => []
   indices = Array.range(0, minLen - 1)
   initPairs: Array<PairItem> = []
@@ -186,9 +186,9 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
         | Some(b) =>
           trimmed = b |> String.trim
           match (trimmed #= "")
-            | true => "agent/" + globalThis.String(idle.agentIndex) + "/" + (taskToAssign.id |> String.toLowerCase)
+            | true => "agent/" + idle.agentIndex + "/" + (taskToAssign.id |> String.toLowerCase)
             | _ => b
-        | _ => "agent/" + globalThis.String(idle.agentIndex) + "/" + (taskToAssign.id |> String.toLowerCase)
+        | _ => "agent/" + idle.agentIndex + "/" + (taskToAssign.id |> String.toLowerCase)
 
       taskAssigned: TaskBlock = {
         id: taskToAssign.id,
@@ -207,7 +207,7 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
       _moveRes: Unknown = moveTask(store, taskAssigned.id, idle.laneTitle)
       _persistRes1: Unknown = persistBoardStoreSync(store)
 
-      workspacePath = boardDir + "/workspaces/repo-agent-" + globalThis.String(idle.agentIndex)
+      workspacePath = boardDir + "/workspaces/repo-agent-" + idle.agentIndex
 
       prompt: String = buildDevAgentPrompt(boardDir, taskAssigned, idle.agentId)
 
@@ -226,8 +226,8 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
         | Some(tot) => tot
         | _ => 1420
 
-      inTokens = globalThis.Math.floor(usedTokens * 0.7)
-      outTokens = globalThis.Math.ceil(usedTokens * 0.3)
+      inTokens = Math.floor(usedTokens * 0.7)
+      outTokens = Math.ceil(usedTokens * 0.3)
 
       updatedTokens: TokenCounter = {
         inputTokens: currentTokens.inputTokens + inTokens,
@@ -355,8 +355,8 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
   agentIndices = Array.range(1, devAgentCount)
   initIdle: Array<IdleAgent> = []
   idleAgents = agentIndices |> Array.reduce(initIdle, (acc, i) => {
-    agentId = "Dev Agent " + globalThis.String(i)
-    laneTitle = "Dev Agent " + globalThis.String(i) + " In Progress"
+    agentId = "Dev Agent " + i
+    laneTitle = "Dev Agent " + i + " In Progress"
 
     isSessionRunning = state.activeSessions |> Array.some((s) =>
       s.agentId #= agentId and s.status #= "Running"
@@ -452,7 +452,7 @@ export runReconcilerLoop = (config: ReconcilerConfig) => effect {
 
   maxIterations = match (config.maxIterations > 0)
     | true => config.maxIterations
-    | _ => globalThis.Infinity
+    | _ => Infinity
 
   baseBranch = match Option.fromNullishOr(config.baseBranch)
     | Some(b) => b

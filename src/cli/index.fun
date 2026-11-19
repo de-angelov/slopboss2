@@ -90,11 +90,13 @@ export schema HelpResult = {
   output: String
 }
 
+export error CliCommandError(message: String)
+
 export getEnvVar = (name: String): Option<String> =>
-  match Option.fromNullishOr(globalThis.process)
+  match Option.fromNullishOr(process)
     | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "env"))
         | Some(env) => match Option.fromNullishOr(Reflect.get(env, name))
-            | Some(val) => Option.some(globalThis.String(val))
+            | Some(val) => Option.some("" + val)
             | None => Option.none()
             | _ => Option.none()
         | None => Option.none()
@@ -103,7 +105,7 @@ export getEnvVar = (name: String): Option<String> =>
     | _ => Option.none()
 
 export getProcessArgv = (): Array<String> =>
-  match Option.fromNullishOr(globalThis.process)
+  match Option.fromNullishOr(process)
     | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "argv"))
         | Some(argv) => argv
         | None => []
@@ -112,9 +114,9 @@ export getProcessArgv = (): Array<String> =>
     | _ => []
 
 export getProcessExecPath = (): String =>
-  match Option.fromNullishOr(globalThis.process)
+  match Option.fromNullishOr(process)
     | Some(proc) => match Option.fromNullishOr(Reflect.get(proc, "execPath"))
-        | Some(ep) => globalThis.String(ep)
+        | Some(ep) => "" + ep
         | None => "bun"
         | _ => "bun"
     | None => "bun"
@@ -157,13 +159,13 @@ export formatDoctorTable = (report: Any): String => {
     "Status    | Check        | Required | Details",
     "--------------------------------------------------------------------------------"
   ]
-  repObj: Any = globalThis.Object(report)
+  repObj: Any = report
   rawChecks: Array<Any> = match Option.fromNullishOr(Reflect.get(repObj, "checks"))
     | Some(c) => c
     | None => []
     | _ => []
   checkLines = rawChecks |> Array.map((c: Any) => {
-    cObj: Any = globalThis.Object(c)
+    cObj: Any = c
     isOk = match Option.fromNullishOr(Reflect.get(cObj, "ok"))
       | Some(ok) => ok #= true
       | None => false
@@ -180,8 +182,8 @@ export formatDoctorTable = (report: Any): String => {
       | true => "Yes"
       | false => "No "
       | _ => "No "
-    name = globalThis.String(Reflect.get(cObj, "name")) |> String.padEnd(12)
-    msg = globalThis.String(Reflect.get(cObj, "message"))
+    name = ("" + Reflect.get(cObj, "name")) |> String.padEnd(12)
+    msg = "" + Reflect.get(cObj, "message")
     => status + "  | " + name + " | " + req + "      | " + msg
   })
   isHealthy = match Option.fromNullishOr(Reflect.get(repObj, "isHealthy"))
@@ -549,17 +551,17 @@ export runSetup = (boardDir: String, repoUrl: String) => effect {
 
 export runSetupFun = (boardDir: String, repoUrl: String) => runSetup(boardDir, repoUrl)
 
-fallbackSpawnFn = () => globalThis.Bun.spawn
+fallbackSpawnFn = () => Bun.spawn
 
 export launchInteractiveGroom = (boardDir: String, model?: Any, spawnFn?: Any) => effect {
   resolvedModel: Option<String> = match Option.fromNullishOr(model)
     | Some(m) => match Option.isOption(m)
         | true => m
-        | false => Option.some(globalThis.String(m))
+        | false => Option.some("" + m)
         | _ => Option.none()
     | None => Option.none()
     | _ => Option.none()
-  fileObj = globalThis.Bun.file(boardDir + "/BACKLOG.md")
+  fileObj = Bun.file(boardDir + "/BACKLOG.md")
   exists <- Effect.promise(() => fileObj.exists())
   backlogText <- match exists
     | true => Effect.promise(() => fileObj.text())
@@ -576,12 +578,12 @@ export launchInteractiveGroom = (boardDir: String, model?: Any, spawnFn?: Any) =
     stdout: "inherit",
     stderr: "inherit"
   }
-  proc: Any = Reflect.apply(spawnFnActual, globalThis.undefined, [agyCmd, spawnOptions])
-  procObj: Any = globalThis.Object(proc)
+  proc: Any = Reflect.apply(spawnFnActual, Option.none(), [agyCmd, spawnOptions])
+  procObj: Any = proc
   exitedPromise: Any = Reflect.get(procObj, "exited")
   rawCode <- Effect.promise(() => exitedPromise)
   code = Option.getOrElse(Option.fromNullishOr(rawCode), () => 0)
-  _ <- Console.log("Team Lead grooming session completed with exit code " + globalThis.String(code))
+  _ <- Console.log("Team Lead grooming session completed with exit code " + code)
   => code
 }
 
@@ -603,7 +605,7 @@ fallbackViewOpts = () => ({})
 
 export runReconcilerCommand = (dir: String, detach: Boolean = false, options?: Any, maxTicks?: Number, pollIntervalMs?: Number) => effect {
   rawOpts: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
-  rawOptsObj: Any = globalThis.Object(rawOpts)
+  rawOptsObj: Any = rawOpts
   res <- match detach
     | true => effect {
         spawnFnActual: Any = Option.getOrElse(Option.fromNullishOr(Reflect.get(rawOptsObj, "spawnFn")), fallbackSpawnFn)
@@ -618,32 +620,32 @@ export runReconcilerCommand = (dir: String, detach: Boolean = false, options?: A
           detached: true,
           stdio: ["ignore", "ignore", "ignore"]
         }
-        proc: Any = Reflect.apply(spawnFnActual, globalThis.undefined, [execArgs, spawnOpts])
-        procObj: Any = globalThis.Object(proc)
+        proc: Any = Reflect.apply(spawnFnActual, Option.none(), [execArgs, spawnOpts])
+        procObj: Any = proc
         unrefFn: Any = Reflect.get(procObj, "unref")
         _unused: Unknown = match Predicate.isFunction(unrefFn)
           | true => Reflect.apply(unrefFn, proc, [])
-          | false => globalThis.undefined
-          | _ => globalThis.undefined
+          | false => Option.none()
+          | _ => Option.none()
         procPid: Unknown = Reflect.get(procObj, "pid")
-        _ <- Console.log("[SLOPBOSS2] Started reconciler daemon in background (PID: " + globalThis.String(procPid) + ")")
+        _ <- Console.log("[SLOPBOSS2] Started reconciler daemon in background (PID: " + procPid + ")")
         => { detached: true, pid: procPid }
     }
     | false => effect {
         _ <- Console.log("[SLOPBOSS2] Starting dispatcher reconciler loop for board: " + dir)
         rawOptsPoll: Unknown = Reflect.get(rawOptsObj, "pollIntervalMs")
         pollVal: Number = match Option.fromNullishOr(pollIntervalMs)
-          | Some(p) => globalThis.Number(p)
+          | Some(p) => Number.parse("" + p) |> Option.getOrElse(() => 1000)
           | None => match Option.fromNullishOr(rawOptsPoll)
-              | Some(p) => globalThis.Number(p)
+              | Some(p) => Number.parse("" + p) |> Option.getOrElse(() => 1000)
               | None => 1000
               | _ => 1000
           | _ => 1000
         rawOptsIter: Unknown = Reflect.get(rawOptsObj, "maxIterations")
         iterVal: Number = match Option.fromNullishOr(maxTicks)
-          | Some(m) => globalThis.Number(m)
+          | Some(m) => Number.parse("" + m) |> Option.getOrElse(() => 0)
           | None => match Option.fromNullishOr(rawOptsIter)
-              | Some(m) => globalThis.Number(m)
+              | Some(m) => Number.parse("" + m) |> Option.getOrElse(() => 0)
               | None => 0
               | _ => 0
           | _ => 0
@@ -670,7 +672,7 @@ export runReconcilerCommand = (dir: String, detach: Boolean = false, options?: A
         r <- runReconcilerLoop(config)
         => r
     }
-    | _ => effect { => globalThis.undefined }
+    | _ => effect { => Option.none() }
   => res
 }
 
@@ -678,7 +680,7 @@ export runInitCommand = (dir: String, repoUrl: String = "https://github.com/de-a
   _ <- Console.log("=== SLOPBOSS2 INIT ===")
   _ <- Console.log("Board directory: " + dir)
   _ <- Console.log("Repository URL:  " + repoUrl)
-  _ <- Console.log("Dev Agents:      " + globalThis.String(agents))
+  _ <- Console.log("Dev Agents:      " + agents)
   res <- initBoardStructure(dir, repoUrl, agents)
   _ <- Console.log("Initialization complete. Workspaces and board ready.")
   => res
@@ -686,7 +688,7 @@ export runInitCommand = (dir: String, repoUrl: String = "https://github.com/de-a
 
 export runGroomCommand = (dir: String, model?: String, options?: Any) => effect {
   rawOpts: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
-  rawOptsObj: Any = globalThis.Object(rawOpts)
+  rawOptsObj: Any = rawOpts
   spawnFnOpt: Unknown = Reflect.get(rawOptsObj, "spawnFn")
   res <- launchInteractiveGroom(dir, Option.getOrUndefined(Option.fromNullishOr(model)), spawnFnOpt)
   => res
@@ -718,17 +720,17 @@ export runControlLoopFun = (boardDir: String, maxTicks: Number = 3) =>
   runControlLoop(boardDir, maxTicks)
 
 failUnknownCommand = (cmdName: String) => effect {
-  _ <- Effect.fail(globalThis.Error("Unknown command: " + cmdName))
-  => globalThis.undefined
+  _ <- Effect.fail(CliCommandError({ message: "Unknown command: " + cmdName }))
+  => Option.none()
 }
 
 handleHelp = (cmd: Any) => effect {
-  obj: Any = globalThis.Object(cmd)
-  rawCmd = globalThis.String(Reflect.get(obj, "command"))
+  obj: Any = cmd
+  rawCmd = "" + Reflect.get(obj, "command")
   isHelpCmd = rawCmd #= "help"
   subOpt: Option<String> = match isHelpCmd
     | true => match Option.fromNullishOr(Reflect.get(obj, "subcommand"))
-        | Some(s) => Option.some(globalThis.String(s))
+        | Some(s) => Option.some("" + s)
         | None => Option.none()
         | _ => Option.none()
     | false => Option.some(rawCmd)
@@ -739,40 +741,40 @@ handleHelp = (cmd: Any) => effect {
 }
 
 handleInvalid = (cmd: Any) => effect {
-  obj: Any = globalThis.Object(cmd)
+  obj: Any = cmd
   errRaw: Unknown = Reflect.get(obj, "error")
   errText = match Option.fromNullishOr(errRaw)
-    | Some(e) => globalThis.String(e)
+    | Some(e) => "" + e
     | None => "Unknown error"
     | _ => "Unknown error"
   errMsg = "Error: " + errText
   _ <- Console.error(errMsg)
   subOpt: Option<String> = match Option.fromNullishOr(Reflect.get(obj, "subcommand"))
-    | Some(s) => Option.some(globalThis.String(s))
+    | Some(s) => Option.some("" + s)
     | None => Option.none()
     | _ => Option.none()
   _ <- Console.log(getHelpMessage(Option.getOrUndefined(subOpt)))
-  _ <- Effect.fail(globalThis.Error(errText))
+  _ <- Effect.fail(CliCommandError({ message: errText }))
   => { help: false, output: errMsg }
 }
 
 runViewCommandWithOpts = (cmd: Any, options?: Any) => {
-  obj: Any = globalThis.Object(cmd)
+  obj: Any = cmd
   rawOpts: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
   dirStr = match Option.fromNullishOr(Reflect.get(obj, "dir"))
-    | Some(d) => globalThis.String(d)
+    | Some(d) => "" + d
     | None => DEFAULT_BOARD_DIR
     | _ => DEFAULT_BOARD_DIR
   rawCmdPoll: Unknown = Reflect.get(obj, "pollIntervalMs")
-  rawOptsPoll: Unknown = Reflect.get(globalThis.Object(rawOpts), "pollIntervalMs")
+  rawOptsPoll: Unknown = Reflect.get(rawOpts, "pollIntervalMs")
   pollValNum: Number = match Option.fromNullishOr(rawCmdPoll)
-    | Some(p) => globalThis.Number(p)
+    | Some(p) => Number.parse("" + p) |> Option.getOrElse(() => 1000)
     | None => match Option.fromNullishOr(rawOptsPoll)
-        | Some(p) => globalThis.Number(p)
+        | Some(p) => Number.parse("" + p) |> Option.getOrElse(() => 1000)
         | None => 1000
         | _ => 1000
     | _ => 1000
-  viewOptsRaw: Any = Reflect.get(globalThis.Object(rawOpts), "viewOptions")
+  viewOptsRaw: Any = Reflect.get(rawOpts, "viewOptions")
   viewOpts: LiveViewOptions = match Option.fromNullishOr(viewOptsRaw)
     | Some(v) => v
     | None => defaultLiveViewOptions
@@ -781,8 +783,8 @@ runViewCommandWithOpts = (cmd: Any, options?: Any) => {
 }
 
 export dispatchCli = (cmd: Any, options?: Any) => effect {
-  obj: Any = globalThis.Object(cmd)
-  rawCmd = globalThis.String(Reflect.get(obj, "command"))
+  obj: Any = cmd
+  rawCmd = "" + Reflect.get(obj, "command")
   rawHelp = match Option.fromNullishOr(Reflect.get(obj, "help"))
     | Some(h) => h #= true
     | None => false
@@ -795,13 +797,13 @@ export dispatchCli = (cmd: Any, options?: Any) => effect {
 
   rawOptions: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
   dirStr = match Option.fromNullishOr(Reflect.get(obj, "dir"))
-    | Some(d) => globalThis.String(d)
+    | Some(d) => "" + d
     | None => DEFAULT_BOARD_DIR
     | _ => DEFAULT_BOARD_DIR
 
   rawModel: Unknown = Reflect.get(obj, "model")
   modelOpt: Option<String> = match Option.fromNullishOr(rawModel)
-    | Some(m) => Option.some(globalThis.String(m))
+    | Some(m) => Option.some("" + m)
     | None => Option.none()
     | _ => Option.none()
 
@@ -811,25 +813,25 @@ export dispatchCli = (cmd: Any, options?: Any) => effect {
     | _ => false
   rawMaxTicks: Unknown = Reflect.get(obj, "maxTicks")
   maxTicksOpt: Option<Number> = match Option.fromNullishOr(rawMaxTicks)
-    | Some(m) => Option.some(globalThis.Number(m))
+    | Some(m) => Number.parse("" + m)
     | None => Option.none()
     | _ => Option.none()
 
   rawPoll: Unknown = Reflect.get(obj, "pollIntervalMs")
   pollOpt: Option<Number> = match Option.fromNullishOr(rawPoll)
-    | Some(p) => Option.some(globalThis.Number(p))
+    | Some(p) => Number.parse("" + p)
     | None => Option.none()
     | _ => Option.none()
 
   rawRepo: Unknown = Reflect.get(obj, "repoUrl")
   repoStr = match Option.fromNullishOr(rawRepo)
-    | Some(r) => globalThis.String(r)
+    | Some(r) => "" + r
     | None => "https://github.com/de-angelov/slopboss2.git"
     | _ => "https://github.com/de-angelov/slopboss2.git"
 
   rawAgents: Unknown = Reflect.get(obj, "agents")
   agentsNum = match Option.fromNullishOr(rawAgents)
-    | Some(a) => globalThis.Number(a)
+    | Some(a) => Number.parse("" + a) |> Option.getOrElse(() => 2)
     | None => 2
     | _ => 2
 

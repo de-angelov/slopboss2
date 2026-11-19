@@ -42,9 +42,9 @@ export renderLane = (lane: AgentLane) =>
   => "  * " + lane.id + " [" + statusColored + "]" + taskInfo + branchInfo
 
 export renderTokenSection = (tokens: TokenUsage) =>
-  inp = globalThis.String(tokens.inputTokens)
-  out = globalThis.String(tokens.outputTokens)
-  tot = globalThis.String(tokens.totalTokens)
+  inp = "" + tokens.inputTokens
+  out = "" + tokens.outputTokens
+  tot = "" + tokens.totalTokens
   => "Token Usage: in=" + inp + " | out=" + out + " | total=" + tot
 
 export renderLogsSection = (logs: Array<String>) =>
@@ -53,7 +53,7 @@ export renderLogsSection = (logs: Array<String>) =>
   => header + formattedLogs
 
 export renderDashboard = (state: DashboardState, clearScreen: Boolean) =>
-  esc = globalThis.String.fromCharCode(27)
+  esc = Buffer.from([27]).toString()
   clearPrefix = match clearScreen
     | true => esc + "[2J" + esc + "[H"
     | false => ""
