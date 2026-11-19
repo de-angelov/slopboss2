@@ -517,14 +517,18 @@ export schema BoardInitResult = {
   message: String
 }
 
-export initBoardStructure = (boardDir: String, repoUrl: String, devAgentCount: Number) => effect
+export initBoardStructure = (boardDir: String, repoUrl: String, devAgentCount: Number) => effect {
   => initBoardStructureSync(boardDir, repoUrl, devAgentCount)
+}
 
-export verifyWorkspacesReady = (boardDir: String, devAgentCount: Number) => effect
+export verifyWorkspacesReady = (boardDir: String, devAgentCount: Number) => effect {
   => verifyWorkspacesReadySync(boardDir, devAgentCount)
+}
 
-export scaffoldBoardMarkdown = (boardDir: String, devAgentCount: Number) => effect
+export scaffoldBoardMarkdown = (boardDir: String, devAgentCount: Number) => effect {
   => scaffoldBoardMarkdownSync(boardDir, devAgentCount)
+}
 
-export provisionWorkspaces = (boardDir: String, repoUrl: String, devAgentCount: Number) => effect
+export provisionWorkspaces = (boardDir: String, repoUrl: String, devAgentCount: Number) => effect {
   => provisionWorkspacesSync(boardDir, repoUrl, devAgentCount)
+}

@@ -325,10 +325,12 @@ export schema ReconcilerState = {
 export initialReconcilerStateFun = (devAgentCount: Number) =>
   initialReconcilerState(devAgentCount)
 
-export reconcileTickFun = (config: ReconcilerConfig, state: ReconcilerState) => effect
+export reconcileTickFun = (config: ReconcilerConfig, state: ReconcilerState) => effect {
   res <- reconcileTick(config, state)
   => res
+}
 
-export runReconcilerLoopFun = (config: ReconcilerConfig) => effect
+export runReconcilerLoopFun = (config: ReconcilerConfig) => effect {
   res <- runReconcilerLoop(config)
   => res
+}
