@@ -1,7 +1,7 @@
 import { Array, Effect, Option, Schema, String } from "effect"
 import { FileSystem, Path } from "effect"
 import { BunServices } from "@effect/platform-bun"
-import { safeSpawnSync, SyncServices } from "./platform.js"
+import { safeSpawnSync, SyncServices } from "./sys.js"
 
 export schema CheckResult = {
   name: String
