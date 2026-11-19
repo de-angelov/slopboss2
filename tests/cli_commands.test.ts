@@ -234,6 +234,14 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect(unknown.command).toBe("invalid");
       expect((unknown as any).error).toContain("not-a-command");
     });
+
+    it("parses a coordination report and rejects incomplete reports", () => {
+      const parsed = parseCliArgs(["coordination", "report", "--status", "acted", "--summary", "assigned work"]);
+      expect(parsed.command).toBe("coordination");
+      expect((parsed as any).status).toBe("acted");
+      expect((parsed as any).summary).toBe("assigned work");
+      expect(parseCliArgs(["coordination", "report", "--status", "acted"]).command).toBe("invalid");
+    });
   });
 
   describe("Diagnostic Table Formatting (formatDoctorTable)", () => {
@@ -299,6 +307,17 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
   });
 
   describe("Command Dispatch & Execution (dispatchCli / runCli)", () => {
+    it("writes a valid coordination result only to the active session path", async () => {
+      const reportPath = path.join(tempDir, "session-result.json");
+      process.env.SLOPBOSS_COORDINATION_REPORT = reportPath;
+      try {
+        await Effect.runPromise(dispatchCli(parseCliArgs(["coordination", "report", "--status", "idle", "--summary", "no eligible tasks"])));
+      } finally {
+        delete process.env.SLOPBOSS_COORDINATION_REPORT;
+      }
+      expect(JSON.parse(fs.readFileSync(reportPath, "utf8"))).toEqual({ status: "idle", summary: "no eligible tasks" });
+    });
+
     it("executes 'doctor' command and prints diagnostic table", async () => {
       // Scaffolding valid board
       fs.writeFileSync(path.join(tempDir, "TASKS.md"), "# TASKS\n");

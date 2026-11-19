@@ -6,6 +6,7 @@ import { buildInteractiveCommand } from "../services/provider.js"
 import { defaultLiveViewOptions, LiveViewOptions, runLiveView } from "./view.js"
 import { findTask, loadBoardStoreSync, updateTaskStatus } from "../domain/boardstore.js"
 import { acquireBoardLock } from "../services/coordination.js"
+import { writeCoordinationReport } from "../services/coordination_report.js"
 
 export schema CliDoctorCommand = {
   command: String
@@ -56,6 +57,13 @@ export schema CliViewCommand = {
   help: Boolean
 }
 
+export schema CliCoordinationCommand = {
+  command: String
+  type: String
+  status: String
+  summary: String
+}
+
 export schema CliHelpCommand = {
   command: String
   type: String
@@ -71,7 +79,7 @@ export schema CliInvalidCommand = {
   help?: Boolean
 }
 
-export schema CliCommand = CliDoctorCommand | CliRunCommand | CliInitCommand | CliGroomCommand | CliStatusCommand | CliViewCommand | CliHelpCommand | CliInvalidCommand
+export schema CliCommand = CliDoctorCommand | CliRunCommand | CliInitCommand | CliGroomCommand | CliStatusCommand | CliViewCommand | CliCoordinationCommand | CliHelpCommand | CliInvalidCommand
 
 export schema DispatchOptions = {
   spawnFn?: Unknown
@@ -253,6 +261,7 @@ export getHelpMessage = (subcommand?: String): String => {
     "  groom [--dir <path>]             Launch interactive Team Lead grooming session",
     "  status [--dir <path>]            Display board execution status",
     "  view [--dir <path>]              Launch interactive terminal dashboard live view",
+    "  coordination report --status <acted|idle|blocked> --summary <text>  Record a session result",
     "",
     "Options:",
     "  -h, --help                       Show help information",
@@ -321,6 +330,7 @@ isKnownSubcommand = (cmd: String): Boolean => {
   when (cmd #= "view") => true
   when (cmd #= "board") => true
   when (cmd #= "recover") => true
+  when (cmd #= "coordination") => true
   => false
 }
 
@@ -350,6 +360,7 @@ export parseCliArgs = (argv?: Array<String>) => {
 
   when (first #= "board") => parseBoardCommand(subArgs)
   when (first #= "recover") => parseRecoverCommand(subArgs)
+  when (first #= "coordination") => parseCoordinationCommand(subArgs)
 
   when (not isKnownSubcommand(first)) => {
     command: "invalid",
@@ -409,6 +420,18 @@ parseRecoverCommand = (args: Array<String>) => {
   dirOpt = args |> Array.findFirstIndex((v) => v #= "--dir" or v #= "-d") |> Option.flatMap((i) => args |> Array.get(i + 1))
   dir = Option.getOrElse(dirOpt, () => args |> Array.get(0) |> Option.getOrElse(() => DEFAULT_BOARD_DIR))
   => { command: "recover", type: "recover", dir: dir }
+}
+
+parseCoordinationCommand = (args: Array<String>) => {
+  action = args |> Array.get(0) |> Option.getOrElse(() => "")
+  rest = args |> Array.drop(1)
+  statusAt = rest |> Array.findFirstIndex((v) => v #= "--status")
+  summaryAt = rest |> Array.findFirstIndex((v) => v #= "--summary")
+  status = statusAt |> Option.flatMap((i) => rest |> Array.get(i + 1)) |> Option.getOrElse(() => "")
+  summary = summaryAt |> Option.flatMap((i) => rest |> Array.get(i + 1)) |> Option.getOrElse(() => "")
+  when (action #! "report") => { command: "invalid", type: "invalid", error: "Usage: slopboss2 coordination report --status <acted|idle|blocked> --summary <text>" }
+  when (status #= "" or summary #= "") => { command: "invalid", type: "invalid", error: "coordination report requires --status and --summary" }
+  => { command: "coordination", type: "coordination", status: status, summary: summary }
 }
 
 export printStatus = (boardDir: String) => effect {
@@ -658,6 +681,7 @@ export dispatchCli = (cmd: Any, options?: Any) => {
 
   when (dispatchAction #= "board") => dispatchBoardCommand(obj, dirStr)
   when (dispatchAction #= "recover") => acquireBoardLock(dirStr).pipe(Effect.scoped)
+  when (dispatchAction #= "coordination") => dispatchCoordinationCommand(obj)
 
   when (dispatchAction #= "help") => handleHelp(cmd)
   when (dispatchAction #= "invalid") => handleInvalid(cmd)
@@ -668,6 +692,12 @@ export dispatchCli = (cmd: Any, options?: Any) => {
   when (dispatchAction #= "status") => printStatus(dirStr)
   when (dispatchAction #= "view") => runViewCommandWithOpts(cmd, Option.getOrUndefined(Option.fromNullishOr(rawOptions)))
   => failUnknownCommand(rawCmd)
+}
+
+dispatchCoordinationCommand = (cmd: Any) => {
+  reportPath = getEnvVar("SLOPBOSS_COORDINATION_REPORT") |> Option.getOrElse(() => "")
+  report = { status: "" + Reflect.get(cmd, "status"), summary: "" + Reflect.get(cmd, "summary") }
+  => writeCoordinationReport(reportPath, report)
 }
 
 dispatchBoardCommand = (cmd: Any, dir: String) => effect {
