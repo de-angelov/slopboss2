@@ -530,7 +530,7 @@ export runDoctorCommand = (dir: String) => effect {
   => report
 }
 
-fallbackBinPath = () => "src/cli/bin.ts"
+fallbackBinPath = () => "src/cli/bin.fun"
 fallbackPoll = () => 1000
 fallbackIter = () => 0
 fallbackMock = () => false
