@@ -10,6 +10,7 @@ import {
   initBoardStructure,
   initBoardStructureSync,
   provisionWorkspacesSync,
+  readRuntimeConfigSync,
   runGitCommand,
   scaffoldBoardMarkdownSync,
   verifyWorkspacesReady,
@@ -172,6 +173,18 @@ describe("Workspace Auto-Provisioning & Board Scaffolding Service", () => {
 
       const doctorReport = runDoctorSync(tempDir);
       expect(doctorReport.isHealthy).toBe(true);
+    });
+
+    it("persists configured runtime values for the controller", () => {
+      const result = initBoardStructureSync(tempDir, "file:///repo.git", 3, "file:///origin.git", "trunk", "gemini");
+      expect(result.ok).toBe(true);
+      expect(readRuntimeConfigSync(tempDir)).toEqual({
+        repository: "file:///repo.git",
+        originUrl: "file:///origin.git",
+        baseBranch: "trunk",
+        provider: "gemini",
+        devAgentCount: 3,
+      });
     });
 
     it("clones from a local git repository when repoUrl is provided", () => {

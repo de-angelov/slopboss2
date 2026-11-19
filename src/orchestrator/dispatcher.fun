@@ -34,6 +34,7 @@ export schema DispatcherConfig = {
   maxIterations: Number
   devAgentCount: Number
   baseBranch?: String
+  provider?: String
   mockRunner?: Boolean
   runnerFn?: Unknown
   mergeQueue?: Unknown
@@ -45,6 +46,7 @@ export schema ReconcilerConfig = {
   maxIterations: Number
   devAgentCount: Number
   baseBranch?: String
+  provider?: String
   mockRunner?: Boolean
   runnerFn?: Unknown
   mergeQueue?: Unknown
@@ -199,10 +201,10 @@ prepareWorkspace = (workspace: String, branch: String): Effect.Effect<Boolean, A
   => checkout.code #= 0
 }
 
-executeRunner = (runnerOpt: Option.Option<Unknown>, useMock: Boolean, agentId: String, taskId: String, prompt: String, workspace: String): Effect.Effect<SessionResult, Any, Any> =>
+executeRunner = (runnerOpt: Option.Option<Unknown>, useMock: Boolean, agentId: String, taskId: String, prompt: String, workspace: String, provider: String): Effect.Effect<SessionResult, Any, Any> =>
   match useMock
     | true => runMockAgentSession(agentId, taskId)
-    | false when Option.isNone(runnerOpt) => runConfiguredAgentSession(prompt, workspace)
+    | false when Option.isNone(runnerOpt) => runConfiguredAgentSession(prompt, workspace, provider)
     | false => {
         runnerAny: Any = Option.getOrElse(runnerOpt, () => "")
         runnerCall: (a: String, b: String, c: String, d: String) => Effect.Effect<Unknown, Any, Any> = runnerAny
@@ -295,7 +297,7 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
     | true => Effect.succeed(true)
     | false => prepareWorkspace(workspacePath, branchName)
   runRes <- match prepared
-    | true => executeRunner(Option.fromNullishOr(config.runnerFn), useMock, idle.agentId, taskAssigned.id, prompt, workspacePath)
+    | true => executeRunner(Option.fromNullishOr(config.runnerFn), useMock, idle.agentId, taskAssigned.id, prompt, workspacePath, Option.getOrElse(Option.fromNullishOr(config.provider), () => "agy"))
     | false => Effect.succeed({ exitCode: 1, totalTokens: 0, completed: false })
 
   usedTokens = resolveUsedTokens(Option.fromNullishOr(runRes.totalTokens))

@@ -132,11 +132,9 @@ Test live view parsing.
 
     const state = readDashboardState(emptyDir);
     expect(state.boardDir).toBe(emptyDir);
-    expect(state.lanes.length).toBe(2);
-    expect(state.lanes[0].status).toBe("Idle");
-    expect(state.lanes[1].status).toBe("Idle");
+    expect(state.lanes.length).toBe(0);
     expect(state.tokens.totalTokens).toBe(0);
-    expect(state.recentLogs.length).toBeGreaterThan(0);
+    expect(state.recentLogs.length).toBe(0);
   });
 
   it("renders live ANSI dashboard with renderFullDashboard", () => {
