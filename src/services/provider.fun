@@ -37,13 +37,14 @@ export parseAgyLine = (line: String) =>
     Schema.Struct({ status: Schema.Literal("completed") })
   ])
   hasCompletionEvidence = Schema.decodeUnknownOption(Schema.fromJsonString(completionEvidence))(trimmed) |> Option.isSome
+  fallbackEvent = match trimmed
+    | l when l |> String.includes("rate_limit") => Option.some(UsageLimitReached)
+    | l when l |> String.includes("usage_limit") => Option.some(UsageLimitReached)
+    | l when l |> String.includes("\"type\":\"assistant\"") => Option.some(AssistantMessage(l))
+    | l when l |> String.includes("\"content\"") => Option.some(AssistantMessage(l))
+    | l when l |> String.includes("\"total_tokens\"") => Option.some(TokenUpdate({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }))
+    | _ => Option.none()
   evt = match hasCompletionEvidence
     | true => Option.some(SessionCompleted)
-    | false => match trimmed
-      | l when l |> String.includes("rate_limit") => Option.some(UsageLimitReached)
-      | l when l |> String.includes("usage_limit") => Option.some(UsageLimitReached)
-      | l when l |> String.includes("\"type\":\"assistant\"") => Option.some(AssistantMessage(l))
-      | l when l |> String.includes("\"content\"") => Option.some(AssistantMessage(l))
-      | l when l |> String.includes("\"total_tokens\"") => Option.some(TokenUpdate({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }))
-      | _ => Option.none()
+    | false => fallbackEvent
   => evt
