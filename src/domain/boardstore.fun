@@ -1,710 +1,5 @@
-import { Array, Option, Schema, String, Effect } from "effect"
-
-ts {
-  import * as fs from "node:fs";
-  import * as path from "node:path";
-  import { Option, Effect } from "effect";
-
-  export interface TaskBlock {
-    id: string;
-    title: string;
-    category: string;
-    owner: string;
-    branch: string;
-    status: string;
-    dependencies: string[];
-    objective: string;
-    scope: string;
-    acceptanceCriteria: string;
-    rawBody: string;
-  }
-
-  export interface MarkdownSection {
-    title: string;
-    name: string;
-    tasks: TaskBlock[];
-    rawContent: string;
-  }
-
-  export interface TasksDocument {
-    header: string;
-    lanes: MarkdownSection[];
-    sections: MarkdownSection[];
-  }
-
-  export interface BoardStore {
-    boardDir: Option.Option<string>;
-    tasksDoc: TasksDocument;
-    backlogContent: string;
-    archiveContent: string;
-    archiveDoc: TasksDocument;
-  }
-
-  export function atomicWriteFileSync(filePath: string, content: string): void {
-    const dir = path.dirname(filePath);
-    fs.mkdirSync(dir, { recursive: true });
-    const tempPath = path.join(
-      dir,
-      `.${path.basename(filePath)}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`
-    );
-    fs.writeFileSync(tempPath, content, "utf-8");
-    fs.renameSync(tempPath, filePath);
-  }
-
-  export function parseTaskBlockText(rawBlock: string): TaskBlock {
-    const lines = rawBlock.split(/\r?\n/);
-    let title = "";
-    let id = "";
-    let category = "";
-    let owner = "";
-    let branch = "";
-    let status = "";
-    let dependencies: string[] = [];
-
-    const objectiveLines: string[] = [];
-    const scopeLines: string[] = [];
-    const acceptanceLines: string[] = [];
-
-    let currentSection: "none" | "objective" | "scope" | "acceptance" | "other" = "none";
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-
-      if (i === 0 && trimmed.startsWith("###")) {
-        title = trimmed.replace(/^###\s*/, "").trim();
-        continue;
-      }
-
-      if (/^Task ID:\s*/i.test(trimmed)) {
-        id = trimmed.replace(/^Task ID:\s*/i, "").trim();
-        currentSection = "none";
-        continue;
-      }
-      if (/^Category:\s*/i.test(trimmed)) {
-        category = trimmed.replace(/^Category:\s*/i, "").trim();
-        currentSection = "none";
-        continue;
-      }
-      if (/^Owner:\s*/i.test(trimmed)) {
-        owner = trimmed.replace(/^Owner:\s*/i, "").trim();
-        currentSection = "none";
-        continue;
-      }
-      if (/^Branch:\s*/i.test(trimmed)) {
-        branch = trimmed.replace(/^Branch:\s*/i, "").trim();
-        currentSection = "none";
-        continue;
-      }
-      if (/^Status:\s*/i.test(trimmed)) {
-        status = trimmed.replace(/^Status:\s*/i, "").trim();
-        currentSection = "none";
-        continue;
-      }
-      if (/^Dependencies:\s*/i.test(trimmed)) {
-        const rawDeps = trimmed.replace(/^Dependencies:\s*/i, "").trim();
-        if (rawDeps.toLowerCase() === "none" || rawDeps === "") {
-          dependencies = [];
-        } else {
-          dependencies = rawDeps
-            .split(",")
-            .map((d) => d.trim().replace(/^\[|\]$/g, ""))
-            .filter(Boolean);
-        }
-        currentSection = "none";
-        continue;
-      }
-
-      if (/^Objective:\s*/i.test(trimmed)) {
-        currentSection = "objective";
-        const after = trimmed.replace(/^Objective:\s*/i, "").trim();
-        if (after) objectiveLines.push(after);
-        continue;
-      }
-      if (/^Scope:\s*/i.test(trimmed)) {
-        currentSection = "scope";
-        const after = trimmed.replace(/^Scope:\s*/i, "").trim();
-        if (after) scopeLines.push(after);
-        continue;
-      }
-      if (/^Acceptance Criteria:\s*/i.test(trimmed)) {
-        currentSection = "acceptance";
-        const after = trimmed.replace(/^Acceptance Criteria:\s*/i, "").trim();
-        if (after) acceptanceLines.push(after);
-        continue;
-      }
-
-      if (
-        /^Blocking tasks:\s*/i.test(trimmed) ||
-        /^Completed:\s*/i.test(trimmed) ||
-        /^Blocked by:\s*/i.test(trimmed) ||
-        /^Progress Notes:\s*/i.test(trimmed) ||
-        /^Verification Evidence:\s*/i.test(trimmed)
-      ) {
-        currentSection = "other";
-        continue;
-      }
-
-      if (currentSection === "objective") {
-        objectiveLines.push(line);
-      } else if (currentSection === "scope") {
-        scopeLines.push(line);
-      } else if (currentSection === "acceptance") {
-        acceptanceLines.push(line);
-      }
-    }
-
-    if (!id && title) {
-      id = title.replace(/\s+/g, "-").toUpperCase();
-    }
-
-    return {
-      id,
-      title,
-      category,
-      owner,
-      branch,
-      status: status || "Todo",
-      dependencies,
-      objective: objectiveLines.join("\n").trim(),
-      scope: scopeLines.join("\n").trim(),
-      acceptanceCriteria: acceptanceLines.join("\n").trim(),
-      rawBody: rawBlock.trim(),
-    };
-  }
-
-  export function parseTasksDocument(content: string): TasksDocument {
-    const lines = content.split(/\r?\n/);
-    const sections: MarkdownSection[] = [];
-    const headerLines: string[] = [];
-
-    let currentSectionTitle: string | null = null;
-    let currentSectionLines: string[] = [];
-
-    const flushSection = () => {
-      if (currentSectionTitle === null) return;
-      const tasks: TaskBlock[] = [];
-      const nonTaskLines: string[] = [];
-
-      let currentTaskLines: string[] | null = null;
-
-      for (const line of currentSectionLines) {
-        if (/^###\s+/.test(line.trim())) {
-          if (currentTaskLines !== null) {
-            tasks.push(parseTaskBlockText(currentTaskLines.join("\n")));
-          }
-          currentTaskLines = [line];
-        } else if (currentTaskLines !== null) {
-          currentTaskLines.push(line);
-        } else {
-          nonTaskLines.push(line);
-        }
-      }
-
-      if (currentTaskLines !== null) {
-        tasks.push(parseTaskBlockText(currentTaskLines.join("\n")));
-      }
-
-      const rawContent = nonTaskLines.join("\n").trim();
-      const sec: MarkdownSection = {
-        title: currentSectionTitle,
-        name: currentSectionTitle,
-        tasks,
-        rawContent,
-      };
-      sections.push(sec);
-    };
-
-    let seenFirstSection = false;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-
-      if (trimmed.startsWith("## ") && !trimmed.startsWith("### ")) {
-        if (!seenFirstSection) {
-          seenFirstSection = true;
-        } else {
-          flushSection();
-        }
-        currentSectionTitle = trimmed.replace(/^##\s+/, "").trim();
-        currentSectionLines = [];
-      } else {
-        if (!seenFirstSection) {
-          headerLines.push(line);
-        } else {
-          currentSectionLines.push(line);
-        }
-      }
-    }
-
-    if (seenFirstSection) {
-      flushSection();
-    }
-
-    const header = headerLines.join("\n").trim();
-    return {
-      header,
-      lanes: sections,
-      sections,
-    };
-  }
-
-  export function formatTaskBlock(task: TaskBlock): string {
-    if (task.rawBody && task.rawBody.trim()) {
-      let body = task.rawBody.trim();
-      body = body.replace(/(^|\n)Status:\s*[^\n]+/g, `$1Status: ${task.status}`);
-      if (task.owner) {
-        body = body.replace(/(^|\n)Owner:\s*[^\n]+/g, `$1Owner: ${task.owner}`);
-      }
-      if (task.branch) {
-        body = body.replace(/(^|\n)Branch:\s*[^\n]+/g, `$1Branch: ${task.branch}`);
-      }
-      return body;
-    }
-
-    const depsStr =
-      task.dependencies && task.dependencies.length > 0
-        ? task.dependencies.join(", ")
-        : "none";
-
-    const parts: string[] = [
-      `### ${task.title || task.id}`,
-      "",
-      `Task ID: ${task.id}`,
-      `Category: ${task.category || "Core Service"}`,
-      `Owner: ${task.owner || "Unassigned"}`,
-      `Branch: ${task.branch || "main"}`,
-      `Status: ${task.status || "Todo"}`,
-      `Dependencies: ${depsStr}`,
-      `Blocking tasks: none`,
-    ];
-
-    if (task.objective) {
-      parts.push("", "Objective:", task.objective);
-    }
-    if (task.scope) {
-      parts.push("", "Scope:", task.scope);
-    }
-    if (task.acceptanceCriteria) {
-      parts.push("", "Acceptance Criteria:", task.acceptanceCriteria);
-    }
-
-    return parts.join("\n");
-  }
-
-  export function formatTasksDocument(
-    docOrSections: TasksDocument | MarkdownSection[],
-    maybeHeader?: string
-  ): string {
-    let header = "# TASKS\n\nActive work board for slopboss2 rewrite.";
-    let sections: MarkdownSection[] = [];
-
-    if (Array.isArray(docOrSections)) {
-      sections = docOrSections;
-      if (typeof maybeHeader === "string") header = maybeHeader;
-    } else if (docOrSections && typeof docOrSections === "object") {
-      if (docOrSections.header) header = docOrSections.header;
-      sections = docOrSections.sections || (docOrSections as any).lanes || [];
-    }
-
-    let out = header.trim() + "\n\n";
-
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      out += `## ${section.title}\n\n`;
-
-      if (section.tasks && section.tasks.length > 0) {
-        const taskStrs = section.tasks.map((task) => formatTaskBlock(task));
-        out += taskStrs.join("\n\n") + "\n";
-      } else {
-        const raw =
-          section.rawContent && section.rawContent.trim()
-            ? section.rawContent.trim()
-            : "*Idle - Ready for next backlog assignment.*";
-        out += raw + "\n";
-      }
-
-      if (i < sections.length - 1) {
-        out += "\n";
-      }
-    }
-
-    return out;
-  }
-
-  export function parseArchiveDocument(content: string): TasksDocument {
-    return parseTasksDocument(content);
-  }
-
-  export function formatArchiveDocument(doc: TasksDocument, summaryBullets?: string): string {
-    let header = doc.header || "# ARCHIVE\n\nCompleted tasks for slopboss2.";
-    if (summaryBullets && summaryBullets.trim()) {
-      header = summaryBullets.trim();
-    }
-    return formatTasksDocument(doc, header);
-  }
-
-  export function parseBacklogTasks(content: string): TaskBlock[] {
-    if (!content) return [];
-    const lines = content.split(/\r?\n/);
-    const tasks: TaskBlock[] = [];
-    let currentTaskLines: string[] | null = null;
-
-    for (const line of lines) {
-      if (/^###\s+/.test(line.trim())) {
-        if (currentTaskLines !== null) {
-          tasks.push(parseTaskBlockText(currentTaskLines.join("\n")));
-        }
-        currentTaskLines = [line];
-      } else if (currentTaskLines !== null) {
-        currentTaskLines.push(line);
-      }
-    }
-    if (currentTaskLines !== null) {
-      tasks.push(parseTaskBlockText(currentTaskLines.join("\n")));
-    }
-    return tasks;
-  }
-
-  export function findTask(store: TasksDocument | BoardStore, taskId: string): Option.Option<TaskBlock> {
-    const sections: MarkdownSection[] =
-      "sections" in store && Array.isArray(store.sections)
-        ? store.sections
-        : (store as BoardStore).tasksDoc?.sections || [];
-
-    for (const sec of sections) {
-      const found = sec.tasks.find((t) => t.id === taskId);
-      if (found) return Option.some(found);
-    }
-
-    if ("archiveDoc" in store && (store as BoardStore).archiveDoc?.sections) {
-      for (const sec of (store as BoardStore).archiveDoc.sections) {
-        const found = sec.tasks.find((t) => t.id === taskId);
-        if (found) return Option.some(found);
-      }
-    }
-
-    if ("backlogContent" in store && (store as BoardStore).backlogContent) {
-      const bTasks = parseBacklogTasks((store as BoardStore).backlogContent);
-      const found = bTasks.find((t) => t.id === taskId);
-      if (found) return Option.some(found);
-    }
-
-    return Option.none();
-  }
-
-  export function updateTaskStatus<T extends TasksDocument | BoardStore>(
-    store: T,
-    taskId: string,
-    newStatus: string
-  ): T {
-    const tasksDoc: TasksDocument =
-      "sections" in store && Array.isArray(store.sections)
-        ? store
-        : (store as any).tasksDoc;
-
-    if (tasksDoc && tasksDoc.sections) {
-      for (const sec of tasksDoc.sections) {
-        const t = sec.tasks.find((task) => task.id === taskId);
-        if (t) {
-          t.status = newStatus;
-          if (t.rawBody) {
-            t.rawBody = t.rawBody.replace(/(^|\n)Status:\s*[^\n]+/g, `$1Status: ${newStatus}`);
-          }
-          break;
-        }
-      }
-    }
-
-    if ("boardDir" in store) {
-      persistBoardStoreSync(store as any);
-    }
-    return store;
-  }
-
-  export function appendTask<T extends TasksDocument | BoardStore>(
-    store: T,
-    targetSectionTitle: string,
-    task: TaskBlock
-  ): T {
-    const tasksDoc: TasksDocument =
-      "sections" in store && Array.isArray(store.sections)
-        ? store
-        : (store as any).tasksDoc;
-
-    let target = tasksDoc.sections.find(
-      (s) => s.title.toLowerCase() === targetSectionTitle.toLowerCase()
-    );
-    if (!target) {
-      target = {
-        title: targetSectionTitle,
-        name: targetSectionTitle,
-        tasks: [],
-        rawContent: "",
-      };
-      tasksDoc.sections.push(target);
-    }
-
-    target.tasks.push(task);
-    target.rawContent = "";
-
-    if ("boardDir" in store) {
-      persistBoardStoreSync(store as any);
-    }
-    return store;
-  }
-
-  export function moveTask<T extends TasksDocument | BoardStore>(
-    store: T,
-    taskId: string,
-    targetSectionTitle: string
-  ): T {
-    const isBoardStore = "tasksDoc" in store;
-    const tasksDoc: TasksDocument = isBoardStore
-      ? (store as any).tasksDoc
-      : (store as TasksDocument);
-
-    let movedTask: TaskBlock | null = null;
-
-    // Search and remove from tasksDoc
-    for (const sec of tasksDoc.sections) {
-      const idx = sec.tasks.findIndex((t) => t.id === taskId);
-      if (idx !== -1) {
-        movedTask = sec.tasks[idx];
-        sec.tasks.splice(idx, 1);
-        if (sec.tasks.length === 0 && !sec.rawContent) {
-          sec.rawContent = "*Idle - Ready for next backlog assignment.*";
-        }
-        break;
-      }
-    }
-
-    if (!movedTask && isBoardStore && (store as any).archiveDoc?.sections) {
-      for (const sec of (store as any).archiveDoc.sections) {
-        const idx = sec.tasks.findIndex((t) => t.id === taskId);
-        if (idx !== -1) {
-          movedTask = sec.tasks[idx];
-          sec.tasks.splice(idx, 1);
-          break;
-        }
-      }
-    }
-
-    if (!movedTask && isBoardStore && (store as any).backlogContent) {
-      const bContent: string = (store as any).backlogContent;
-      const lines = bContent.split(/\r?\n/);
-      let foundStart = -1;
-      let foundEnd = -1;
-      let currentStart = -1;
-
-      for (let i = 0; i < lines.length; i++) {
-        if (/^###\s+/.test(lines[i].trim())) {
-          if (currentStart !== -1) {
-            const block = lines.slice(currentStart, i).join("\n");
-            if (new RegExp(`Task ID:\\s*${taskId}\\b`, "i").test(block)) {
-              foundStart = currentStart;
-              foundEnd = i;
-              movedTask = parseTaskBlockText(block);
-              break;
-            }
-          }
-          currentStart = i;
-        }
-      }
-      if (!movedTask && currentStart !== -1) {
-        const block = lines.slice(currentStart).join("\n");
-        if (new RegExp(`Task ID:\\s*${taskId}\\b`, "i").test(block)) {
-          foundStart = currentStart;
-          foundEnd = lines.length;
-          movedTask = parseTaskBlockText(block);
-        }
-      }
-      if (foundStart !== -1) {
-        lines.splice(foundStart, foundEnd - foundStart);
-        (store as any).backlogContent = lines.join("\n").trim() + "\n";
-      }
-    }
-
-    if (!movedTask) {
-      return store;
-    }
-
-    const lowerTarget = targetSectionTitle.toLowerCase();
-    const isArchive = lowerTarget.includes("archive") || lowerTarget.includes("done");
-
-    if (isArchive) {
-      movedTask.status = "Done";
-      if (movedTask.rawBody) {
-        movedTask.rawBody = movedTask.rawBody.replace(/(^|\n)Status:\s*[^\n]+/g, `$1Status: Done`);
-        const today = new Date().toISOString().slice(0, 10);
-        if (!/(^|\n)Completed:\s*[^\n]+/i.test(movedTask.rawBody)) {
-          movedTask.rawBody = movedTask.rawBody.replace(
-            /(^|\n)Status:\s*Done/i,
-            `$1Status: Done\nCompleted: ${today}`
-          );
-        }
-      }
-
-      if (isBoardStore) {
-        const archiveDoc: TasksDocument = (store as any).archiveDoc;
-        let doneSec = archiveDoc.sections.find(
-          (s) => s.title.toLowerCase() === "done" || s.title.toLowerCase() === targetSectionTitle.toLowerCase()
-        );
-        if (!doneSec) {
-          doneSec = {
-            title: "Done",
-            name: "Done",
-            tasks: [],
-            rawContent: "",
-          };
-          archiveDoc.sections.push(doneSec);
-        }
-        doneSec.tasks.unshift(movedTask);
-
-        // Also add bullet to archive content summary if not present
-        const bulletPattern = new RegExp(`- \\[x\\]\\s+${movedTask.id}:`, "i");
-        if ((store as any).archiveContent && !bulletPattern.test((store as any).archiveContent)) {
-          const bullet = `- [x] ${movedTask.id}: ${movedTask.title}\n`;
-          (store as any).archiveContent = (store as any).archiveContent.replace(
-            /(# ARCHIVE[^\n]*\n\n[^\n]*\n\n)/,
-            `$1${bullet}`
-          );
-        }
-      } else {
-        // In-memory document only
-        let target = tasksDoc.sections.find(
-          (s) => s.title.toLowerCase() === targetSectionTitle.toLowerCase()
-        );
-        if (!target) {
-          target = {
-            title: targetSectionTitle,
-            name: targetSectionTitle,
-            tasks: [],
-            rawContent: "",
-          };
-          tasksDoc.sections.push(target);
-        }
-        target.tasks.push(movedTask);
-      }
-    } else {
-      // Moving to another lane / section
-      if (lowerTarget.includes("dev agent 1")) {
-        movedTask.owner = "Dev Agent 1";
-        movedTask.status = "In Progress";
-      } else if (lowerTarget.includes("dev agent 2")) {
-        movedTask.owner = "Dev Agent 2";
-        movedTask.status = "In Progress";
-      } else if (lowerTarget.includes("backlog")) {
-        movedTask.status = "Backlog";
-      }
-
-      let target = tasksDoc.sections.find(
-        (s) => s.title.toLowerCase() === targetSectionTitle.toLowerCase()
-      );
-      if (!target) {
-        target = {
-          title: targetSectionTitle,
-          name: targetSectionTitle,
-          tasks: [],
-          rawContent: "",
-        };
-        tasksDoc.sections.push(target);
-      }
-      target.tasks.push(movedTask);
-      target.rawContent = "";
-    }
-
-    if (isBoardStore && (store as any).boardDir) {
-      persistBoardStoreSync(store as any);
-    }
-
-    return store;
-  }
-
-  export function archiveTask<T extends TasksDocument | BoardStore>(
-    store: T,
-    taskId: string
-  ): T {
-    return moveTask(store, taskId, "Done");
-  }
-
-  export function loadBoardStoreSync(boardDir: string): BoardStore {
-    const tasksPath = path.join(boardDir, "TASKS.md");
-    const backlogPath = path.join(boardDir, "BACKLOG.md");
-    const archivePath = path.join(boardDir, "ARCHIVE.md");
-
-    const tasksRaw = fs.existsSync(tasksPath) ? fs.readFileSync(tasksPath, "utf-8") : "# TASKS\n";
-    const backlogRaw = fs.existsSync(backlogPath) ? fs.readFileSync(backlogPath, "utf-8") : "# BACKLOG\n";
-    const archiveRaw = fs.existsSync(archivePath) ? fs.readFileSync(archivePath, "utf-8") : "# ARCHIVE\n";
-
-    const tasksDoc = parseTasksDocument(tasksRaw);
-    const archiveDoc = parseTasksDocument(archiveRaw);
-
-    return {
-      boardDir: Option.some(boardDir),
-      tasksDoc,
-      backlogContent: backlogRaw,
-      archiveContent: archiveRaw,
-      archiveDoc,
-    };
-  }
-
-  export function createBoardStore(boardDir?: string): BoardStore {
-    if (boardDir) {
-      return loadBoardStoreSync(boardDir);
-    }
-    const emptyDoc: TasksDocument = {
-      header: "# TASKS\n\nActive work board for slopboss2 rewrite.",
-      lanes: [],
-      sections: [],
-    };
-    return {
-      boardDir: Option.none(),
-      tasksDoc: emptyDoc,
-      backlogContent: "# BACKLOG\n",
-      archiveContent: "# ARCHIVE\n",
-      archiveDoc: {
-        header: "# ARCHIVE\n\nCompleted tasks for slopboss2.",
-        lanes: [],
-        sections: [],
-      },
-    };
-  }
-
-  export function persistBoardStoreSync(store: BoardStore): void {
-    const dir = Option.isOption(store.boardDir)
-      ? (Option.isSome(store.boardDir) ? store.boardDir.value : null)
-      : (store.boardDir as any);
-    if (!dir) return;
-
-    if (store.tasksDoc) {
-      const tasksPath = path.join(dir, "TASKS.md");
-      atomicWriteFileSync(tasksPath, formatTasksDocument(store.tasksDoc));
-    }
-    if (store.archiveDoc) {
-      const archivePath = path.join(dir, "ARCHIVE.md");
-      atomicWriteFileSync(archivePath, formatTasksDocument(store.archiveDoc, store.archiveContent));
-    }
-    if (store.backlogContent) {
-      const backlogPath = path.join(dir, "BACKLOG.md");
-      atomicWriteFileSync(backlogPath, store.backlogContent);
-    }
-  }
-
-  export function persistBoardStore(store: BoardStore): Effect.Effect<void, Error> {
-    return Effect.try({
-      try: () => persistBoardStoreSync(store),
-      catch: (e) => (e instanceof Error ? e : new Error(String(e))),
-    });
-  }
-
-  export function loadBoardStore(boardDir: string): Effect.Effect<BoardStore, Error> {
-    return Effect.try({
-      try: () => loadBoardStoreSync(boardDir),
-      catch: (e) => (e instanceof Error ? e : new Error(String(e))),
-    });
-  }
-}
+import { Array, DateTime, Effect, FileSystem, Layer, Option, Path, Schema, String } from "effect"
+import * as fs from "node:fs"
 
 export schema TaskBlock = {
   id: String
@@ -741,11 +36,787 @@ export schema BoardStore = {
   archiveDoc: TasksDocument
 }
 
-export parseTasksDocumentFun = (content: String) =>
-  parseTasksDocument(content)
+BunFileSystem = FileSystem.makeNoop({
+  exists: (p: String) => Effect.try(() => fs.existsSync(p)) |> Effect.orDie,
+  readFileString: (p: String) => Effect.try(() => fs.readFileSync(p, "utf-8")) |> Effect.orDie,
+  writeFileString: (p: String, data: String) => Effect.try(() => fs.writeFileSync(p, data, "utf-8")) |> Effect.asVoid |> Effect.orDie,
+  makeDirectory: (p: String) => Effect.try(() => fs.mkdirSync(p, { recursive: true })) |> Effect.asVoid |> Effect.orDie,
+  rename: (oldP: String, newP: String) => Effect.try(() => fs.renameSync(oldP, newP)) |> Effect.asVoid |> Effect.orDie,
+  remove: (p: String) => Effect.try(() => fs.rmSync(p, { recursive: true, force: true })) |> Effect.asVoid |> Effect.orDie
+})
 
-export parseBacklogTasksFun = (content: String) =>
-  parseBacklogTasks(content)
+export BunServices = {
+  layer: Layer.merge(Path.layer, Layer.succeed(FileSystem.FileSystem, BunFileSystem))
+}
 
-export formatTasksDocumentFun = (doc: TasksDocument) =>
-  formatTasksDocument(doc)
+assignStore = (target: ts { Record<string, any> }, source: ts { Record<string, any> }) => {
+  res: Unknown = globalThis.Object.assign(target, source)
+  => target
+}
+
+export atomicWriteFileEffect = (filePath: String, content: String) => effect {
+  fsService <- FileSystem.FileSystem
+  pathService <- Path.Path
+  dir = pathService.dirname(filePath)
+  base = pathService.basename(filePath)
+  _ <- fsService.makeDirectory(dir)
+  tempPath = pathService.join(dir, "." + base + ".tmp." + globalThis.String(Date.now()) + "." + globalThis.Math.random().toString(36).slice(2))
+  _ <- fsService.writeFileString(tempPath, content)
+  _ <- fsService.rename(tempPath, filePath)
+  => true
+}
+
+export atomicWriteFile = (filePath: String, content: String) => atomicWriteFileEffect(filePath, content) |> Effect.provide(BunServices.layer)
+
+export atomicWriteFileSync = (filePath: String, content: String) => {
+  _ = atomicWriteFile(filePath, content) |> Effect.runSync
+  => true
+}
+
+schema TaskBlockParseState = {
+  title: String
+  id: String
+  category: String
+  owner: String
+  branch: String
+  status: String
+  dependencies: Array<String>
+  objectiveLines: Array<String>
+  scopeLines: Array<String>
+  acceptanceLines: Array<String>
+  currentSection: String
+}
+
+export parseTaskBlockText = (rawBlock: String): TaskBlock => {
+  lines = rawBlock |> String.replaceAll("\r", "") |> String.split("\n")
+  initialState: TaskBlockParseState = {
+    title: "",
+    id: "",
+    category: "",
+    owner: "",
+    branch: "",
+    status: "",
+    dependencies: [],
+    objectiveLines: [],
+    scopeLines: [],
+    acceptanceLines: [],
+    currentSection: "none"
+  }
+
+  cleanRx = globalThis.RegExp("^\\[|\\]$", "g")
+  splitRx = globalThis.RegExp("\\s+", "g")
+
+  finalState = lines |> Array.reduce(initialState, (state, line) => {
+    trimmed = line |> String.trim
+    lowerTrimmed = trimmed |> String.toLowerCase
+    colonIndexOpt = trimmed |> String.indexOf(":")
+    afterColon = match colonIndexOpt
+      | Some(i) => trimmed |> String.substring(i + 1) |> String.trim
+      | None => ""
+
+    isOther = (lowerTrimmed |> String.startsWith("blocking tasks:")) or (lowerTrimmed |> String.startsWith("completed:")) or (lowerTrimmed |> String.startsWith("blocked by:")) or (lowerTrimmed |> String.startsWith("progress notes:")) or (lowerTrimmed |> String.startsWith("verification evidence:"))
+
+    res = match (trimmed |> String.startsWith("###"))
+      | true =>
+          t = trimmed |> String.substring(3) |> String.trim
+          { ...state, title: t }
+      | false =>
+          match (lowerTrimmed |> String.startsWith("task id:"))
+            | true => { ...state, id: afterColon, currentSection: "none" }
+            | false => match (lowerTrimmed |> String.startsWith("category:"))
+              | true => { ...state, category: afterColon, currentSection: "none" }
+              | false => match (lowerTrimmed |> String.startsWith("owner:"))
+                | true => { ...state, owner: afterColon, currentSection: "none" }
+                | false => match (lowerTrimmed |> String.startsWith("branch:"))
+                  | true => { ...state, branch: afterColon, currentSection: "none" }
+                  | false => match (lowerTrimmed |> String.startsWith("status:"))
+                    | true => { ...state, status: afterColon, currentSection: "none" }
+                    | false => match (lowerTrimmed |> String.startsWith("dependencies:"))
+                      | true =>
+                          deps = match ((afterColon |> String.toLowerCase) #= "none" or afterColon #= "")
+                            | true => []
+                            | false =>
+                                rawList = afterColon |> String.split(",")
+                                rawList |> Array.map((d: String) => d |> String.trim |> String.replace(cleanRx, "")) |> Array.filter((d: String) => d #! "")
+                          { ...state, dependencies: deps, currentSection: "none" }
+                      | false => match (lowerTrimmed |> String.startsWith("objective:"))
+                        | true =>
+                            linesObj = match (afterColon #= "")
+                              | true => []
+                              | false => [afterColon]
+                            { ...state, objectiveLines: linesObj, currentSection: "objective" }
+                        | false => match (lowerTrimmed |> String.startsWith("scope:"))
+                          | true =>
+                              linesScope = match (afterColon #= "")
+                                | true => []
+                                | false => [afterColon]
+                              { ...state, scopeLines: linesScope, currentSection: "scope" }
+                          | false => match (lowerTrimmed |> String.startsWith("acceptance criteria:"))
+                            | true =>
+                                linesAC = match (afterColon #= "")
+                                  | true => []
+                                  | false => [afterColon]
+                                { ...state, acceptanceLines: linesAC, currentSection: "acceptance" }
+                            | false => match isOther
+                              | true => { ...state, currentSection: "other" }
+                              | false =>
+                                  match state.currentSection
+                                    | "objective" => { ...state, objectiveLines: state.objectiveLines |> Array.append(line) }
+                                    | "scope" => { ...state, scopeLines: state.scopeLines |> Array.append(line) }
+                                    | "acceptance" => { ...state, acceptanceLines: state.acceptanceLines |> Array.append(line) }
+                                    | _ => state
+    => res
+  })
+
+  computedId = match (finalState.id #= "" and finalState.title #! "")
+    | true => finalState.title |> String.replace(splitRx, "-") |> String.toUpperCase
+    | false => finalState.id
+
+  computedStatus = match (finalState.status #= "")
+    | true => "Todo"
+    | false => finalState.status
+
+  => {
+    id: computedId,
+    title: finalState.title,
+    category: finalState.category,
+    owner: finalState.owner,
+    branch: finalState.branch,
+    status: computedStatus,
+    dependencies: finalState.dependencies,
+    objective: finalState.objectiveLines |> Array.join("\n") |> String.trim,
+    scope: finalState.scopeLines |> Array.join("\n") |> String.trim,
+    acceptanceCriteria: finalState.acceptanceLines |> Array.join("\n") |> String.trim,
+    rawBody: rawBlock |> String.trim
+  }
+}
+
+schema SectionParseState = {
+  tasks: Array<TaskBlock>
+  nonTaskLines: Array<String>
+  currentTaskLines: Option<Array<String>>
+}
+
+parseSectionLines = (title: String, lines: Array<String>): MarkdownSection => {
+  initialState: SectionParseState = {
+    tasks: [],
+    nonTaskLines: [],
+    currentTaskLines: Option.none()
+  }
+
+  reduced = lines |> Array.reduce(initialState, (state, line) => {
+    trimmed = line |> String.trim
+    res = match (trimmed |> String.startsWith("### "))
+      | true =>
+          flushedTasks = match state.currentTaskLines
+            | Some(tLines) => state.tasks |> Array.append(parseTaskBlockText(tLines |> Array.join("\n")))
+            | None => state.tasks
+          { ...state, tasks: flushedTasks, currentTaskLines: Option.some([line]) }
+      | false =>
+          match state.currentTaskLines
+            | Some(tLines) => { ...state, currentTaskLines: Option.some(tLines |> Array.append(line)) }
+            | None => { ...state, nonTaskLines: state.nonTaskLines |> Array.append(line) }
+    => res
+  })
+
+  allTasks = match reduced.currentTaskLines
+    | Some(tLines) => reduced.tasks |> Array.append(parseTaskBlockText(tLines |> Array.join("\n")))
+    | None => reduced.tasks
+
+  rawContent = reduced.nonTaskLines |> Array.join("\n") |> String.trim
+
+  => {
+    title: title,
+    name: title,
+    tasks: allTasks,
+    rawContent: rawContent
+  }
+}
+
+schema DocParseState = {
+  seenFirstSection: Boolean
+  headerLines: Array<String>
+  sections: Array<MarkdownSection>
+  currentSectionTitle: String
+  currentSectionLines: Array<String>
+}
+
+export parseTasksDocument = (content: String): TasksDocument => {
+  lines = content |> String.replaceAll("\r", "") |> String.split("\n")
+  initialState: DocParseState = {
+    seenFirstSection: false,
+    headerLines: [],
+    sections: [],
+    currentSectionTitle: "",
+    currentSectionLines: []
+  }
+
+  reduced = lines |> Array.reduce(initialState, (state, line) => {
+    trimmed = line |> String.trim
+    isSectionHeader = (trimmed |> String.startsWith("## ")) and not (trimmed |> String.startsWith("### "))
+    res = match isSectionHeader
+      | true =>
+          secTitle = trimmed |> String.substring(2) |> String.trim
+          match state.seenFirstSection
+            | false =>
+                { ...state, seenFirstSection: true, currentSectionTitle: secTitle, currentSectionLines: [] }
+            | true =>
+                flushedSec = parseSectionLines(state.currentSectionTitle, state.currentSectionLines)
+                { ...state, sections: state.sections |> Array.append(flushedSec), currentSectionTitle: secTitle, currentSectionLines: [] }
+      | false =>
+          match state.seenFirstSection
+            | false => { ...state, headerLines: state.headerLines |> Array.append(line) }
+            | true => { ...state, currentSectionLines: state.currentSectionLines |> Array.append(line) }
+    => res
+  })
+
+  allSections = match reduced.seenFirstSection
+    | true =>
+        lastSec = parseSectionLines(reduced.currentSectionTitle, reduced.currentSectionLines)
+        reduced.sections |> Array.append(lastSec)
+    | false => reduced.sections
+
+  header = reduced.headerLines |> Array.join("\n") |> String.trim
+
+  => {
+    header: header,
+    lanes: allSections,
+    sections: allSections
+  }
+}
+
+export parseArchiveDocument = (content: String): TasksDocument => parseTasksDocument(content)
+
+export parseBacklogTasks = (content: String): Array<TaskBlock> => {
+  when (content #= "") => []
+  lines = content |> String.replaceAll("\r", "") |> String.split("\n")
+
+  initialState: SectionParseState = {
+    tasks: [],
+    nonTaskLines: [],
+    currentTaskLines: Option.none()
+  }
+
+  reduced = lines |> Array.reduce(initialState, (state, line) => {
+    trimmed = line |> String.trim
+    res = match (trimmed |> String.startsWith("### "))
+      | true =>
+          flushedTasks = match state.currentTaskLines
+            | Some(tLines) => state.tasks |> Array.append(parseTaskBlockText(tLines |> Array.join("\n")))
+            | None => state.tasks
+          { ...state, tasks: flushedTasks, currentTaskLines: Option.some([line]) }
+      | false =>
+          match state.currentTaskLines
+            | Some(tLines) => { ...state, currentTaskLines: Option.some(tLines |> Array.append(line)) }
+            | None => state
+    => res
+  })
+
+  allTasks = match reduced.currentTaskLines
+    | Some(tLines) => reduced.tasks |> Array.append(parseTaskBlockText(tLines |> Array.join("\n")))
+    | None => reduced.tasks
+
+  => allTasks
+}
+
+export formatTaskBlock = (task: TaskBlock): String => {
+  trimmedRaw = task.rawBody |> String.trim
+  statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+  ownerRx = globalThis.RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
+  branchRx = globalThis.RegExp("(^|\\n)Branch:\\s*[^\\n]+", "g")
+
+  res = match (trimmedRaw #! "")
+    | true =>
+        b1 = trimmedRaw |> String.replace(statusRx, "$1Status: " + task.status)
+        b2 = match (task.owner #! "")
+          | true => b1 |> String.replace(ownerRx, "$1Owner: " + task.owner)
+          | false => b1
+        b3 = match (task.branch #! "")
+          | true => b2 |> String.replace(branchRx, "$1Branch: " + task.branch)
+          | false => b2
+        b3
+    | false =>
+        depsStr = match (task.dependencies.length > 0)
+          | true => task.dependencies |> Array.join(", ")
+          | false => "none"
+        titleStr = match (task.title #! "")
+          | true => task.title
+          | false => task.id
+        catStr = match (task.category #! "")
+          | true => task.category
+          | false => "Core Service"
+        ownerStr = match (task.owner #! "")
+          | true => task.owner
+          | false => "Unassigned"
+        branchStr = match (task.branch #! "")
+          | true => task.branch
+          | false => "main"
+        statusStr = match (task.status #! "")
+          | true => task.status
+          | false => "Todo"
+
+        baseParts = [
+          "### " + titleStr,
+          "",
+          "Task ID: " + task.id,
+          "Category: " + catStr,
+          "Owner: " + ownerStr,
+          "Branch: " + branchStr,
+          "Status: " + statusStr,
+          "Dependencies: " + depsStr,
+          "Blocking tasks: none"
+        ]
+
+        p1 = match (task.objective #! "")
+          | true => baseParts |> Array.appendAll(["", "Objective:", task.objective])
+          | false => baseParts
+
+        p2 = match (task.scope #! "")
+          | true => p1 |> Array.appendAll(["", "Scope:", task.scope])
+          | false => p1
+
+        p3 = match (task.acceptanceCriteria #! "")
+          | true => p2 |> Array.appendAll(["", "Acceptance Criteria:", task.acceptanceCriteria])
+          | false => p2
+
+        p3 |> Array.join("\n")
+  => res
+}
+
+formatSection = (section: MarkdownSection): String => {
+  tasksPart = match (section.tasks.length > 0)
+    | true => (section.tasks |> Array.map(formatTaskBlock) |> Array.join("\n\n")) + "\n"
+    | false =>
+        raw = match ((section.rawContent |> String.trim) #! "")
+          | true => section.rawContent |> String.trim
+          | false => "*Idle - Ready for next backlog assignment.*"
+        raw + "\n"
+  => "## " + section.title + "\n\n" + tasksPart
+}
+
+formatSectionsOnly = (sections: Array<MarkdownSection>, maybeHeader: Option<String>): String => {
+  headerDefault = "# TASKS\n\nActive work board for slopboss2 rewrite."
+  header = match maybeHeader
+    | Some(h) => h
+    | None => headerDefault
+  sectionsPart = sections |> Array.map(formatSection) |> Array.join("\n")
+  => (header |> String.trim) + "\n\n" + sectionsPart
+}
+
+formatDocumentOnly = (doc: TasksDocument): String => {
+  headerDefault = "# TASKS\n\nActive work board for slopboss2 rewrite."
+  header = match (Boolean(doc.header) and doc.header #! "")
+    | true => doc.header
+    | false => headerDefault
+  sections = match Boolean(doc.sections)
+    | true => doc.sections
+    | false => match Boolean(doc.lanes)
+      | true => doc.lanes
+      | false => []
+  sectionsPart = sections |> Array.map(formatSection) |> Array.join("\n")
+  => (header |> String.trim) + "\n\n" + sectionsPart
+}
+
+export formatTasksDocument = (docOrSections: ts { any }, maybeHeader?: String): String => {
+  isArray = globalThis.Array.isArray(docOrSections)
+  res = match isArray
+    | true => formatSectionsOnly(docOrSections, maybeHeader)
+    | false => formatDocumentOnly(docOrSections)
+  => res
+}
+
+export formatArchiveDocument = (doc: TasksDocument, summaryBullets?: String): String => {
+  header = match summaryBullets
+    | Some(b) => match ((b |> String.trim) #! "")
+        | true => b |> String.trim
+        | false => doc.header
+    | None => doc.header
+  => formatTasksDocument(doc, header)
+}
+
+findTaskInTasksDocument = (doc: TasksDocument, taskId: String): Option.Option<TaskBlock> => doc.sections |> Array.findFirst((sec: MarkdownSection) => sec.tasks |> Array.some((t: TaskBlock) => t.id #= taskId)) |> Option.flatMap((sec: MarkdownSection) => sec.tasks |> Array.findFirst((t: TaskBlock) => t.id #= taskId))
+
+findTaskInBoardStore = (store: BoardStore, taskId: String): Option.Option<TaskBlock> => {
+  inTasks = findTaskInTasksDocument(store.tasksDoc, taskId)
+  res = match inTasks
+    | Some(t) => Option.some(t)
+    | None =>
+        inArchive = match Boolean(store.archiveDoc)
+          | true => findTaskInTasksDocument(store.archiveDoc, taskId)
+          | false => Option.none()
+        match inArchive
+          | Some(t) => Option.some(t)
+          | None =>
+              match (store.backlogContent #! "")
+                | true =>
+                    bTasks = parseBacklogTasks(store.backlogContent)
+                    bTasks |> Array.findFirst((t: TaskBlock) => t.id #= taskId)
+                | false => Option.none()
+  => res
+}
+
+export findTask = (store: ts { any }, taskId: String): Option.Option<TaskBlock> => {
+  isDoc = globalThis.Object.hasOwn(store, "sections")
+  res = match isDoc
+    | true => findTaskInTasksDocument(store, taskId)
+    | false => findTaskInBoardStore(store, taskId)
+  => res
+}
+
+updateStatusInSections = (sections: Array<MarkdownSection>, taskId: String, newStatus: String): Array<MarkdownSection> => {
+  statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+  res = sections |> Array.map((sec: MarkdownSection) => {
+    updatedTasks = sec.tasks |> Array.map((task: TaskBlock) =>
+      match (task.id #= taskId)
+        | true =>
+            raw = match (task.rawBody #! "")
+              | true => task.rawBody |> String.replace(statusRx, "$1Status: " + newStatus)
+              | false => task.rawBody
+            { ...task, status: newStatus, rawBody: raw }
+        | false => task
+    )
+    => { ...sec, tasks: updatedTasks }
+  })
+  => res
+}
+
+addTaskToSections = (sections: Array<MarkdownSection>, targetTitle: String, task: TaskBlock, prepend: Boolean): Array<MarkdownSection> => {
+  targetLower = targetTitle |> String.toLowerCase
+  targetIndex = sections |> Array.findFirstIndex((s: MarkdownSection) => (s.title |> String.toLowerCase) #= targetLower)
+
+  updatedSections = match targetIndex
+    | Some(idx) =>
+        sections |> Array.map((sec: MarkdownSection, i: Number) =>
+          match (i #= idx)
+            | true =>
+                newTasks = match prepend
+                  | true => [task] |> Array.appendAll(sec.tasks)
+                  | false => sec.tasks |> Array.append(task)
+                { ...sec, tasks: newTasks, rawContent: "" }
+            | false => sec
+        )
+    | None =>
+        newSec: MarkdownSection = {
+          title: targetTitle,
+          name: targetTitle,
+          tasks: [task],
+          rawContent: ""
+        }
+        sections |> Array.append(newSec)
+  => updatedSections
+}
+
+schema RemoveResult = {
+  updatedSections: Array<MarkdownSection>
+  maybeTask: Option<TaskBlock>
+}
+
+removeTaskFromSections = (sections: Array<MarkdownSection>, taskId: String): RemoveResult => {
+  foundTaskOpt = sections |> Array.findFirst((sec: MarkdownSection) => sec.tasks |> Array.some((t: TaskBlock) => t.id #= taskId)) |> Option.flatMap((sec: MarkdownSection) => sec.tasks |> Array.findFirst((t: TaskBlock) => t.id #= taskId))
+
+  updatedSections = match foundTaskOpt
+    | Some(_) =>
+        sections |> Array.map((sec: MarkdownSection) => {
+          filteredTasks = sec.tasks |> Array.filter((t: TaskBlock) => t.id #! taskId)
+          raw = match (sec.tasks.length > 0 and filteredTasks.length #= 0 and sec.rawContent #= "")
+            | true => "*Idle - Ready for next backlog assignment.*"
+            | false => sec.rawContent
+          => { ...sec, tasks: filteredTasks, rawContent: raw }
+        })
+    | None => sections
+
+  => { updatedSections: updatedSections, maybeTask: foundTaskOpt }
+}
+
+updateTaskStatusInBoardStore = (store: BoardStore, taskId: String, newStatus: String): BoardStore => {
+  newSections = updateStatusInSections(store.tasksDoc.sections, taskId, newStatus)
+  newDoc = { ...store.tasksDoc, sections: newSections, lanes: newSections }
+  assignStore(store, { tasksDoc: newDoc })
+  match Option.isSome(store.boardDir)
+    | true => persistBoardStoreSync(store)
+    | false => true
+  => store
+}
+
+updateTaskStatusInTasksDocument = (doc: TasksDocument, taskId: String, newStatus: String): TasksDocument => {
+  newSections = updateStatusInSections(doc.sections, taskId, newStatus)
+  assignStore(doc, { sections: newSections, lanes: newSections })
+  => doc
+}
+
+export updateTaskStatus = (store: ts { any }, taskId: String, newStatus: String): ts { any } => {
+  isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
+  res = match isBoardStore
+    | true => updateTaskStatusInBoardStore(store, taskId, newStatus)
+    | false => updateTaskStatusInTasksDocument(store, taskId, newStatus)
+  => res
+}
+
+appendTaskInBoardStore = (store: BoardStore, targetSectionTitle: String, task: TaskBlock): BoardStore => {
+  newSections = addTaskToSections(store.tasksDoc.sections, targetSectionTitle, task, false)
+  newDoc = { ...store.tasksDoc, sections: newSections, lanes: newSections }
+  assignStore(store, { tasksDoc: newDoc })
+  match Option.isSome(store.boardDir)
+    | true => persistBoardStoreSync(store)
+    | false => true
+  => store
+}
+
+appendTaskInTasksDocument = (doc: TasksDocument, targetSectionTitle: String, task: TaskBlock): TasksDocument => {
+  newSections = addTaskToSections(doc.sections, targetSectionTitle, task, false)
+  assignStore(doc, { sections: newSections, lanes: newSections })
+  => doc
+}
+
+export appendTask = (store: ts { any }, targetSectionTitle: String, task: TaskBlock): ts { any } => {
+  isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
+  res = match isBoardStore
+    | true => appendTaskInBoardStore(store, targetSectionTitle, task)
+    | false => appendTaskInTasksDocument(store, targetSectionTitle, task)
+  => res
+}
+
+export loadBoardStoreEffect = (boardDir: String) => effect {
+  fsService <- FileSystem.FileSystem
+  pathService <- Path.Path
+
+  tasksPath = pathService.join(boardDir, "TASKS.md")
+  backlogPath = pathService.join(boardDir, "BACKLOG.md")
+  archivePath = pathService.join(boardDir, "ARCHIVE.md")
+
+  tExists <- fsService.exists(tasksPath)
+  tasksRaw <- match tExists
+    | true => fsService.readFileString(tasksPath)
+    | false => Effect.succeed("# TASKS\n")
+
+  bExists <- fsService.exists(backlogPath)
+  backlogRaw <- match bExists
+    | true => fsService.readFileString(backlogPath)
+    | false => Effect.succeed("# BACKLOG\n")
+
+  aExists <- fsService.exists(archivePath)
+  archiveRaw <- match aExists
+    | true => fsService.readFileString(archivePath)
+    | false => Effect.succeed("# ARCHIVE\n")
+
+  tasksDoc = parseTasksDocument(tasksRaw)
+  archiveDoc = parseTasksDocument(archiveRaw)
+
+  store: BoardStore = {
+    boardDir: Option.some(boardDir),
+    tasksDoc: tasksDoc,
+    backlogContent: backlogRaw,
+    archiveContent: archiveRaw,
+    archiveDoc: archiveDoc
+  }
+  => store
+}
+
+export loadBoardStore = (boardDir: String) => loadBoardStoreEffect(boardDir) |> Effect.provide(BunServices.layer)
+
+export loadBoardStoreSync = (boardDir: String): BoardStore => {
+  store = loadBoardStore(boardDir) |> Effect.runSync
+  => store
+}
+
+export createBoardStore = (boardDir?: String): BoardStore => {
+  res = match boardDir
+    | Some(dir) => loadBoardStoreSync(dir)
+    | None =>
+        emptyDoc: TasksDocument = {
+          header: "# TASKS\n\nActive work board for slopboss2 rewrite.",
+          lanes: [],
+          sections: []
+        }
+        emptyArchive: TasksDocument = {
+          header: "# ARCHIVE\n\nCompleted tasks for slopboss2.",
+          lanes: [],
+          sections: []
+        }
+        {
+          boardDir: Option.none(),
+          tasksDoc: emptyDoc,
+          backlogContent: "# BACKLOG\n",
+          archiveContent: "# ARCHIVE\n",
+          archiveDoc: emptyArchive
+        }
+  => res
+}
+
+export persistBoardStoreEffect = (store: BoardStore) => effect {
+  pathService <- Path.Path
+
+  dir = match store.boardDir
+    | Some(d) => d
+    | None => ""
+
+  when (dir #= "") => true
+
+  tasksPath = pathService.join(dir, "TASKS.md")
+  archivePath = pathService.join(dir, "ARCHIVE.md")
+  backlogPath = pathService.join(dir, "BACKLOG.md")
+
+  _ <- atomicWriteFileEffect(tasksPath, formatTasksDocument(store.tasksDoc))
+  _ <- atomicWriteFileEffect(archivePath, formatTasksDocument(store.archiveDoc, store.archiveContent))
+  _ <- atomicWriteFileEffect(backlogPath, store.backlogContent)
+  => true
+}
+
+export persistBoardStore = (store: BoardStore) => persistBoardStoreEffect(store) |> Effect.provide(BunServices.layer)
+
+export persistBoardStoreSync = (store: BoardStore) => {
+  _ = persistBoardStore(store) |> Effect.runSync
+  => true
+}
+
+moveTaskInTasksDocument = (doc: TasksDocument, taskId: String, targetSectionTitle: String): TasksDocument => {
+  r = removeTaskFromSections(doc.sections, taskId)
+  when (Option.isNone(r.maybeTask)) => doc
+
+  foundTask = Option.getOrThrow(r.maybeTask)
+  lowerTarget = targetSectionTitle |> String.toLowerCase
+  isArchive = (lowerTarget |> String.includes("archive")) or (lowerTarget |> String.includes("done"))
+
+  finalTask = match isArchive
+    | true =>
+        statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+        statusDoneRx = globalThis.RegExp("(^|\\n)Status:\\s*Done", "i")
+        raw1 = match (foundTask.rawBody #! "")
+          | true => foundTask.rawBody |> String.replace(statusRx, "$1Status: Done")
+          | false => foundTask.rawBody
+        today = DateTime.formatIsoDateUtc(DateTime.nowUnsafe())
+        hasCompleted = raw1 |> String.includes("Completed:")
+        raw2 = match (raw1 #! "" and not hasCompleted)
+          | true => raw1 |> String.replace(statusDoneRx, "$1Status: Done\nCompleted: " + today)
+          | false => raw1
+        { ...foundTask, status: "Done", rawBody: raw2 }
+    | false =>
+        newOwner = match (lowerTarget |> String.includes("dev agent 1"))
+          | true => "Dev Agent 1"
+          | false => match (lowerTarget |> String.includes("dev agent 2"))
+            | true => "Dev Agent 2"
+            | false => foundTask.owner
+        newStatus = match ((lowerTarget |> String.includes("dev agent 1")) or (lowerTarget |> String.includes("dev agent 2")))
+          | true => "In Progress"
+          | false => match (lowerTarget |> String.includes("backlog"))
+            | true => "Backlog"
+            | false => foundTask.status
+        statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+        ownerRx = globalThis.RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
+        raw1 = match (foundTask.rawBody #! "")
+          | true => foundTask.rawBody |> String.replace(statusRx, "$1Status: " + newStatus)
+          | false => foundTask.rawBody
+        raw2 = match (raw1 #! "" and newOwner #! "")
+          | true => raw1 |> String.replace(ownerRx, "$1Owner: " + newOwner)
+          | false => raw1
+        { ...foundTask, owner: newOwner, status: newStatus, rawBody: raw2 }
+
+  newSections = addTaskToSections(r.updatedSections, targetSectionTitle, finalTask, false)
+  assignStore(doc, { sections: newSections, lanes: newSections })
+  => doc
+}
+
+moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: String): BoardStore => {
+  r1 = removeTaskFromSections(store.tasksDoc.sections, taskId)
+
+  taskAndStore = match r1.maybeTask
+    | Some(t) =>
+        newDoc = { ...store.tasksDoc, sections: r1.updatedSections, lanes: r1.updatedSections }
+        { store: { ...store, tasksDoc: newDoc }, task: Option.some(t) }
+    | None =>
+        r2 = removeTaskFromSections(store.archiveDoc.sections, taskId)
+        match r2.maybeTask
+          | Some(t) =>
+              newArchive = { ...store.archiveDoc, sections: r2.updatedSections, lanes: r2.updatedSections }
+              { store: { ...store, archiveDoc: newArchive }, task: Option.some(t) }
+          | None =>
+              bTasks = parseBacklogTasks(store.backlogContent)
+              foundOpt = bTasks |> Array.findFirst((t: TaskBlock) => t.id #= taskId)
+              match foundOpt
+                | Some(t) =>
+                    newBacklog = (store.backlogContent |> String.replace(t.rawBody, "") |> String.trim) + "\n"
+                    { store: { ...store, backlogContent: newBacklog }, task: Option.some(t) }
+                | None =>
+                    { store: store, task: Option.none() }
+
+  when (Option.isNone(taskAndStore.task)) => store
+
+  foundTask = Option.getOrThrow(taskAndStore.task)
+  curStore = taskAndStore.store
+  lowerTarget = targetSectionTitle |> String.toLowerCase
+  isArchive = (lowerTarget |> String.includes("archive")) or (lowerTarget |> String.includes("done"))
+
+  _ = match isArchive
+    | true =>
+        statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+        statusDoneRx = globalThis.RegExp("(^|\\n)Status:\\s*Done", "i")
+        raw1 = match (foundTask.rawBody #! "")
+          | true => foundTask.rawBody |> String.replace(statusRx, "$1Status: Done")
+          | false => foundTask.rawBody
+        today = DateTime.formatIsoDateUtc(DateTime.nowUnsafe())
+        hasCompleted = raw1 |> String.includes("Completed:")
+        raw2 = match (raw1 #! "" and not hasCompleted)
+          | true => raw1 |> String.replace(statusDoneRx, "$1Status: Done\nCompleted: " + today)
+          | false => raw1
+        finalTask = { ...foundTask, status: "Done", rawBody: raw2 }
+
+        newArchiveSections = addTaskToSections(curStore.archiveDoc.sections, "Done", finalTask, true)
+        newArchiveDoc = { ...curStore.archiveDoc, sections: newArchiveSections, lanes: newArchiveSections }
+
+        bulletPattern = "- [x] " + finalTask.id + ":"
+        hasBullet = curStore.archiveContent |> String.includes(bulletPattern)
+        newArchiveContent = match hasBullet
+          | true => curStore.archiveContent
+          | false =>
+              bullet = "- [x] " + finalTask.id + ": " + finalTask.title + "\n"
+              archiveRx = globalThis.RegExp("(# ARCHIVE[^\\n]*\\n\\n[^\\n]*\\n\\n)")
+              curStore.archiveContent |> String.replace(archiveRx, "$1" + bullet)
+
+        finalStore = { ...curStore, archiveDoc: newArchiveDoc, archiveContent: newArchiveContent }
+        assignStore(store, finalStore)
+        match Option.isSome(finalStore.boardDir)
+          | true => persistBoardStoreSync(store)
+          | false => true
+    | false =>
+        newOwner = match (lowerTarget |> String.includes("dev agent 1"))
+          | true => "Dev Agent 1"
+          | false => match (lowerTarget |> String.includes("dev agent 2"))
+            | true => "Dev Agent 2"
+            | false => foundTask.owner
+        newStatus = match ((lowerTarget |> String.includes("dev agent 1")) or (lowerTarget |> String.includes("dev agent 2")))
+          | true => "In Progress"
+          | false => match (lowerTarget |> String.includes("backlog"))
+            | true => "Backlog"
+            | false => foundTask.status
+
+        statusRx = globalThis.RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
+        ownerRx = globalThis.RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
+        raw1 = match (foundTask.rawBody #! "")
+          | true => foundTask.rawBody |> String.replace(statusRx, "$1Status: " + newStatus)
+          | false => foundTask.rawBody
+        raw2 = match (raw1 #! "" and newOwner #! "")
+          | true => raw1 |> String.replace(ownerRx, "$1Owner: " + newOwner)
+          | false => raw1
+
+        finalTask = { ...foundTask, owner: newOwner, status: newStatus, rawBody: raw2 }
+
+        newSections = addTaskToSections(curStore.tasksDoc.sections, targetSectionTitle, finalTask, false)
+        newTasksDoc = { ...curStore.tasksDoc, sections: newSections, lanes: newSections }
+        finalStore = { ...curStore, tasksDoc: newTasksDoc }
+        assignStore(store, finalStore)
+        match Option.isSome(finalStore.boardDir)
+          | true => persistBoardStoreSync(store)
+          | false => true
+
+  => store
+}
+
+export moveTask = (store: ts { any }, taskId: String, targetSectionTitle: String): ts { any } => {
+  isBoardStore = globalThis.Object.hasOwn(store, "tasksDoc")
+  res = match isBoardStore
+    | true => moveTaskInBoardStore(store, taskId, targetSectionTitle)
+    | false => moveTaskInTasksDocument(store, taskId, targetSectionTitle)
+  => res
+}
+
+export archiveTask = (store: ts { any }, taskId: String): ts { any } => moveTask(store, taskId, "Done")
