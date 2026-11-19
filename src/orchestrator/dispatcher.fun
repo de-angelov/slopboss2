@@ -1,5 +1,5 @@
 import { Array, Console, Duration, Effect, Option, Queue, Ref, Schema, String } from "effect"
-import { archiveTask, BoardStore, loadBoardStoreSync, moveTask, parseBacklogTasks, persistBoardStoreSync, TaskBlock, TasksDocument } from "../domain/boardstore.js"
+import { archiveTask, BoardStore, loadBoardStoreSync, MarkdownSection, moveTask, parseBacklogTasks, persistBoardStoreSync, TaskBlock, TasksDocument } from "../domain/boardstore.js"
 import { findReadyTasks, TaskNode } from "../domain/dag.js"
 import { acquireBoardLock } from "../services/coordination.js"
 import { buildDevAgentPrompt } from "../services/prompt.js"
@@ -99,31 +99,28 @@ export initialReconcilerStateFun = (devAgentCount: Number = 2) =>
   initialReconcilerState(devAgentCount)
 
 getDocCompletedIds = (archiveDoc: TasksDocument): Array<String> => {
-  sections = match Option.fromNullishOr(archiveDoc)
-    | Some(doc) => match Option.fromNullishOr(doc.sections)
-      | Some(s) => s
-      | _ => []
-    | _ => []
-  res = sections |> Array.flatMap((sec) => {
-    tasks = match Option.fromNullishOr(sec.tasks)
-      | Some(t) => t
-      | _ => []
+  docOpt = Option.fromNullishOr(archiveDoc)
+  when (Option.isNone(docOpt)) => []
+  doc: TasksDocument = archiveDoc
+  sectionsOpt = Option.fromNullishOr(doc.sections)
+  when (Option.isNone(sectionsOpt)) => []
+  sections: Array<MarkdownSection> = doc.sections
+  res = sections |> Array.flatMap((sec: MarkdownSection) => {
+    tasksOpt = Option.fromNullishOr(sec.tasks)
+    when (Option.isNone(tasksOpt)) => []
+    tasks: Array<TaskBlock> = sec.tasks
     initAcc: Array<String> = []
-    => tasks |> Array.reduce(initAcc, (acc, t) =>
-      match Option.fromNullishOr(t.id)
-        | Some(id) => match (id #! "")
-          | true => acc |> Array.append(id)
-          | _ => acc
-        | _ => acc
-    )
+    => tasks |> Array.reduce(initAcc, (acc, t: TaskBlock) => {
+      id = Option.getOrElse(Option.fromNullishOr(t.id), () => "")
+      when (id #= "") => acc
+      => acc |> Array.append(id)
+    })
   })
   => res
 }
 
 getContentCompletedIds = (archiveContent: String): Array<String> => {
-  content = match Option.fromNullishOr(archiveContent)
-    | Some(c) => c
-    | _ => ""
+  content = Option.getOrElse(Option.fromNullishOr(archiveContent), () => "")
   when (content #= "") => []
 
   bulletRx = RegExp("- \\[x\\]\\s+([A-Za-z0-9_-]+):", "gi")
@@ -131,21 +128,19 @@ getContentCompletedIds = (archiveContent: String): Array<String> => {
 
   matches1 = Array.fromIterable(content.matchAll(bulletRx))
   initIds1: Array<String> = []
-  ids1 = matches1 |> Array.reduce(initIds1, (acc, m) =>
-    match Option.fromNullishOr(Reflect.get(m, 1))
-      | Some(id) => acc |> Array.append("" + id)
-      | None => acc
-      | _ => acc
-  )
+  ids1 = matches1 |> Array.reduce(initIds1, (acc, m) => {
+    rawId = Option.getOrElse(Option.fromNullishOr(Reflect.get(m, 1)), () => "")
+    when (rawId #= "") => acc
+    => acc |> Array.append("" + rawId)
+  })
 
   matches2 = Array.fromIterable(content.matchAll(taskRx))
   initIds2: Array<String> = []
-  ids2 = matches2 |> Array.reduce(initIds2, (acc, m) =>
-    match Option.fromNullishOr(Reflect.get(m, 1))
-      | Some(id) => acc |> Array.append("" + id)
-      | None => acc
-      | _ => acc
-  )
+  ids2 = matches2 |> Array.reduce(initIds2, (acc, m) => {
+    rawId = Option.getOrElse(Option.fromNullishOr(Reflect.get(m, 1)), () => "")
+    when (rawId #= "") => acc
+    => acc |> Array.append("" + rawId)
+  })
 
   => ids1 |> Array.appendAll(ids2)
 }
@@ -161,143 +156,223 @@ zipIdleAndTasks = (agents: Array<IdleAgent>, tasks: Array<TaskBlock>): Array<Pai
   minLen = Math.min(agents.length, tasks.length)
   when (minLen <= 0) => []
   indices = Array.range(0, minLen - 1)
+  emptyIdle: IdleAgent = { agentId: "", laneTitle: "", agentIndex: 0 }
+  emptyTask: TaskBlock = { id: "", title: "", category: "", owner: "", branch: "", status: "", dependencies: [], objective: "", scope: "", acceptanceCriteria: "", rawBody: "" }
   initPairs: Array<PairItem> = []
   res = indices |> Array.reduce(initPairs, (acc, i) => {
     aOpt = agents[i]
     tOpt = tasks[i]
-    match aOpt
-      | Some(a) => match tOpt
-        | Some(t) => acc |> Array.append({ idle: a, taskToAssign: t })
-        | _ => acc
-      | _ => acc
+    when (Option.isNone(aOpt) or Option.isNone(tOpt)) => acc
+    a = aOpt |> Option.getOrElse(() => emptyIdle)
+    t = tOpt |> Option.getOrElse(() => emptyTask)
+    => acc |> Array.append({ idle: a, taskToAssign: t })
   })
   => res
 }
 
+resolveBranchName = (rawBranch: Option.Option<String>, agentIndex: Number, taskId: String): String => {
+  defaultBranch = "agent/" + agentIndex + "/" + String.toLowerCase(taskId)
+  b = Option.getOrElse(rawBranch, () => defaultBranch)
+  trimmed = String.trim(b)
+  when (trimmed #= "") => defaultBranch
+  => b
+}
+
+executeRunner = (runnerOpt: Option.Option<Unknown>, agentId: String, taskId: String, prompt: String): Effect.Effect<SessionResult, Any, Any> => {
+  when (Option.isNone(runnerOpt)) => runMockAgentSession(agentId, taskId)
+  runnerAny: Any = Option.getOrElse(runnerOpt, () => "")
+  runnerCall: (a: String, b: String, c: String) => Effect.Effect<Unknown, Any, Any> = runnerAny
+  => effect {
+    rawRes <- runnerCall(agentId, taskId, prompt)
+    => decodeSessionResult(rawRes)
+  }
+}
+
+resolveUsedTokens = (tokensOpt: Option.Option<Number>): Number =>
+  Option.getOrElse(tokensOpt, () => 1420)
+
+submitMergeRequest = (queueOpt: Option.Option<Unknown>, mergeReq: MergeRequest, baseBranch: String): Effect.Effect<Unit, Any, Any> => {
+  when (Option.isNone(queueOpt)) => effect {
+    _ <- landMergeRequest(mergeReq, baseBranch)
+    => Unit
+  }
+  q: Any = Option.getOrElse(queueOpt, () => "")
+  => effect {
+    _ <- enqueueMergeRequest(q, mergeReq)
+    => Unit
+  }
+}
+
+createFailedSession = (idle: IdleAgent, taskAssigned: TaskBlock, branchName: String, workspacePath: String): RunningSession => {
+  agentId: idle.agentId,
+  taskId: taskAssigned.id,
+  branch: branchName,
+  workspace: workspacePath,
+  status: "Running"
+}
+
+handleSessionCompletion = (isDone: Boolean, idle: IdleAgent, taskAssigned: TaskBlock, branchName: String, workspacePath: String, currentSessions: Array<RunningSession>, store: BoardStore, baseBranch: String, mergeQueueOpt: Option.Option<Unknown>): Effect.Effect<Array<RunningSession>, Any, Any> => {
+  when (not isDone) => Effect.succeed(currentSessions |> Array.append(createFailedSession(idle, taskAssigned, branchName, workspacePath)))
+
+  => effect {
+    mergeReq: MergeRequest = {
+      taskId: taskAssigned.id,
+      branch: branchName,
+      workspace: workspacePath,
+      isZeroCommit: false,
+      verificationCmd: Option.none()
+    }
+
+    _ <- submitMergeRequest(mergeQueueOpt, mergeReq, baseBranch)
+    _archiveRes: Unknown = archiveTask(store, taskAssigned.id)
+    _persistRes2: Unknown = persistBoardStoreSync(store)
+    => currentSessions
+  }
+}
+
 processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession>, currentTokens: TokenCounter, boardDir: String, baseBranch: String, store: BoardStore, config: ReconcilerConfig): Effect.Effect<AssignmentResult, Any, Any> => effect {
   headOpt = Array.head(pairList)
-  res <- match headOpt
-    | Some(headItem) => effect {
-      tail = pairList |> Array.drop(1)
-      idle: IdleAgent = headItem.idle
-      taskToAssign: TaskBlock = headItem.taskToAssign
+  when (Option.isNone(headOpt)) => { sessions: currentSessions, tokens: currentTokens }
+  emptyPair: PairItem = {
+    idle: { agentId: "", laneTitle: "", agentIndex: 0 },
+    taskToAssign: { id: "", title: "", category: "", owner: "", branch: "", status: "", dependencies: [], objective: "", scope: "", acceptanceCriteria: "", rawBody: "" }
+  }
+  headItem = headOpt |> Option.getOrElse(() => emptyPair)
+  tail = pairList |> Array.drop(1)
+  idle: IdleAgent = headItem.idle
+  taskToAssign: TaskBlock = headItem.taskToAssign
 
-      branchName: String = match Option.fromNullishOr(taskToAssign.branch)
-        | Some(b) =>
-          trimmed = b |> String.trim
-          match (trimmed #= "")
-            | true => "agent/" + idle.agentIndex + "/" + (taskToAssign.id |> String.toLowerCase)
-            | _ => b
-        | _ => "agent/" + idle.agentIndex + "/" + (taskToAssign.id |> String.toLowerCase)
+  branchName = resolveBranchName(Option.fromNullishOr(taskToAssign.branch), idle.agentIndex, taskToAssign.id)
 
-      taskAssigned: TaskBlock = {
-        id: taskToAssign.id,
-        title: taskToAssign.title,
-        category: taskToAssign.category,
-        owner: idle.agentId,
-        branch: branchName,
-        status: "In Progress",
-        dependencies: taskToAssign.dependencies,
-        objective: taskToAssign.objective,
-        scope: taskToAssign.scope,
-        acceptanceCriteria: taskToAssign.acceptanceCriteria,
-        rawBody: taskToAssign.rawBody
-      }
+  taskAssigned: TaskBlock = {
+    id: taskToAssign.id,
+    title: taskToAssign.title,
+    category: taskToAssign.category,
+    owner: idle.agentId,
+    branch: branchName,
+    status: "In Progress",
+    dependencies: taskToAssign.dependencies,
+    objective: taskToAssign.objective,
+    scope: taskToAssign.scope,
+    acceptanceCriteria: taskToAssign.acceptanceCriteria,
+    rawBody: taskToAssign.rawBody
+  }
 
-      _moveRes: Unknown = moveTask(store, taskAssigned.id, idle.laneTitle)
-      _persistRes1: Unknown = persistBoardStoreSync(store)
+  _moveRes: Unknown = moveTask(store, taskAssigned.id, idle.laneTitle)
+  _persistRes1: Unknown = persistBoardStoreSync(store)
 
-      workspacePath = boardDir + "/workspaces/repo-agent-" + idle.agentIndex
+  workspacePath = boardDir + "/workspaces/repo-agent-" + idle.agentIndex
+  prompt: String = buildDevAgentPrompt(boardDir, taskAssigned, idle.agentId)
 
-      prompt: String = buildDevAgentPrompt(boardDir, taskAssigned, idle.agentId)
+  runRes <- executeRunner(Option.fromNullishOr(config.runnerFn), idle.agentId, taskAssigned.id, prompt)
 
-      runRes <- match Option.fromNullishOr(config.runnerFn)
-        | Some(runner) => effect {
-          runnerAny: Any = runner
-          runnerCall: (a: String, b: String, c: String) => Effect.Effect<Unknown, Any, Any> = runnerAny
-          resEffect = runnerCall(idle.agentId, taskAssigned.id, prompt)
-          rawRes <- resEffect
-          sessionRes = decodeSessionResult(rawRes)
-          => sessionRes
-        }
-        | _ => runMockAgentSession(idle.agentId, taskAssigned.id)
+  usedTokens = resolveUsedTokens(Option.fromNullishOr(runRes.totalTokens))
+  inTokens = Math.floor(usedTokens * 0.7)
+  outTokens = Math.ceil(usedTokens * 0.3)
 
-      usedTokens: Number = match Option.fromNullishOr(runRes.totalTokens)
-        | Some(tot) => tot
-        | _ => 1420
+  updatedTokens: TokenCounter = {
+    inputTokens: currentTokens.inputTokens + inTokens,
+    outputTokens: currentTokens.outputTokens + outTokens,
+    totalTokens: currentTokens.totalTokens + usedTokens
+  }
 
-      inTokens = Math.floor(usedTokens * 0.7)
-      outTokens = Math.ceil(usedTokens * 0.3)
+  isDone = runRes.completed or runRes.exitCode #= 0
 
-      updatedTokens: TokenCounter = {
-        inputTokens: currentTokens.inputTokens + inTokens,
-        outputTokens: currentTokens.outputTokens + outTokens,
-        totalTokens: currentTokens.totalTokens + usedTokens
-      }
+  updatedSessions <- handleSessionCompletion(
+    isDone,
+    idle,
+    taskAssigned,
+    branchName,
+    workspacePath,
+    currentSessions,
+    store,
+    baseBranch,
+    Option.fromNullishOr(config.mergeQueue)
+  )
 
-      isDone = runRes.completed or runRes.exitCode #= 0
+  nextResult <- processPairs(
+    tail,
+    updatedSessions,
+    updatedTokens,
+    boardDir,
+    baseBranch,
+    store,
+    config
+  )
+  => nextResult
+}
 
-      updatedSessions <- match isDone
-        | true => effect {
-          mergeReq: MergeRequest = {
-            taskId: taskAssigned.id,
-            branch: branchName,
-            workspace: workspacePath,
-            isZeroCommit: false,
-            verificationCmd: Option.none()
-          }
+resolveBaseBranch = (branchOpt: Option.Option<String>): String =>
+  Option.getOrElse(branchOpt, () => "main")
 
-          _ <- match Option.fromNullishOr(config.mergeQueue)
-            | Some(queue) => effect {
-              q: Any = queue
-              _ <- enqueueMergeRequest(q, mergeReq)
-              => Unit
-            }
-            | _ => effect {
-              _ <- landMergeRequest(mergeReq, baseBranch)
-              => Unit
-            }
+resolveDevAgentCount = (count: Number): Number => {
+  when (count > 0) => count
+  => 2
+}
 
-          _archiveRes: Unknown = archiveTask(store, taskAssigned.id)
-          _persistRes2: Unknown = persistBoardStoreSync(store)
+resolveRawContent = (contentOpt: Option.Option<String>): String =>
+  Option.getOrElse(contentOpt, () => "")
 
-          => currentSessions
-        }
-        | _ => effect {
-          failedSession: RunningSession = {
-            agentId: idle.agentId,
-            taskId: taskAssigned.id,
-            branch: branchName,
-            workspace: workspacePath,
-            status: "Running"
-          }
-          => currentSessions |> Array.append(failedSession)
-        }
+getExtraTasks = (tasksDoc: TasksDocument, existingTasks: Array<TaskBlock>): Array<TaskBlock> => {
+  when (Option.isNone(Option.fromNullishOr(tasksDoc))) => []
+  when (Option.isNone(Option.fromNullishOr(tasksDoc.sections))) => []
+  sections: Array<MarkdownSection> = tasksDoc.sections
 
-      nextResult <- processPairs(
-        tail,
-        updatedSessions,
-        updatedTokens,
-        boardDir,
-        baseBranch,
-        store,
-        config
-      )
-      => nextResult
-    }
-    | _ => Effect.succeed({ sessions: currentSessions, tokens: currentTokens })
-  => res
+  backlogSec = sections |> Array.findFirst((s: MarkdownSection) => {
+    title = Option.getOrElse(Option.fromNullishOr(s.title), () => "")
+    low = title |> String.toLowerCase
+    => low |> String.includes("backlog")
+  })
+  when (Option.isNone(backlogSec)) => []
+  emptySec: MarkdownSection = { title: "", name: "", tasks: [], rawContent: "" }
+  sec = backlogSec |> Option.getOrElse(() => emptySec)
+
+  when (Option.isNone(Option.fromNullishOr(sec.tasks))) => []
+  tasks: Array<TaskBlock> = sec.tasks
+
+  => tasks |> Array.filter((t: TaskBlock) =>
+    not (existingTasks |> Array.some((b: TaskBlock) => b.id #= t.id))
+  )
+}
+
+getTaskDependencies = (t: TaskBlock): Array<String> =>
+  Option.getOrElse(Option.fromNullishOr(t.dependencies), () => [])
+
+toTaskNode = (t: TaskBlock): TaskNode => {
+  id: t.id,
+  dependsOn: getTaskDependencies(t)
+}
+
+isLaneActiveInDoc = (tasksDoc: TasksDocument, agentId: String): Boolean => {
+  when (Option.isNone(Option.fromNullishOr(tasksDoc))) => false
+  when (Option.isNone(Option.fromNullishOr(tasksDoc.sections))) => false
+  sections: Array<MarkdownSection> = tasksDoc.sections
+
+  agentIdLow = agentId |> String.toLowerCase
+  laneSec = sections |> Array.findFirst((s: MarkdownSection) => {
+    title = Option.getOrElse(Option.fromNullishOr(s.title), () => "")
+    low = title |> String.toLowerCase
+    => low |> String.includes(agentIdLow)
+  })
+  when (Option.isNone(laneSec)) => false
+  emptySec: MarkdownSection = { title: "", name: "", tasks: [], rawContent: "" }
+  sec = laneSec |> Option.getOrElse(() => emptySec)
+
+  when (Option.isNone(Option.fromNullishOr(sec.tasks))) => false
+  tasks: Array<TaskBlock> = sec.tasks
+
+  => tasks |> Array.some((t: TaskBlock) => {
+    st = Option.getOrElse(Option.fromNullishOr(t.status), () => "")
+    stLow = st |> String.toLowerCase
+    => stLow #= "in progress"
+  })
 }
 
 export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effect.Effect<ReconcilerState, Any, Any> => effect {
   nextTick = state.tickCount + 1
   boardDir = config.boardDir
-  baseBranch = match Option.fromNullishOr(config.baseBranch)
-    | Some(b) => b
-    | _ => "main"
-  devAgentCount = match (config.devAgentCount > 0)
-    | true => config.devAgentCount
-    | _ => 2
+  baseBranch = resolveBaseBranch(Option.fromNullishOr(config.baseBranch))
+  devAgentCount = resolveDevAgentCount(config.devAgentCount)
 
   // 1. Load board store
   store = loadBoardStoreSync(boardDir)
@@ -306,32 +381,9 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
   completedIds = getCompletedTaskIds(store)
 
   // 3. Collect backlog tasks
-  rawBacklog = match Option.fromNullishOr(store.backlogContent)
-    | Some(c) => c
-    | _ => ""
+  rawBacklog = resolveRawContent(Option.fromNullishOr(store.backlogContent))
   backlogTasks = parseBacklogTasks(rawBacklog)
-
-  extraTasks = match Option.fromNullishOr(store.tasksDoc)
-    | Some(doc) => match Option.fromNullishOr(doc.sections)
-      | Some(sections) =>
-        backlogSec = sections |> Array.findFirst((s) => {
-          title = match Option.fromNullishOr(s.title)
-            | Some(t) => t
-            | _ => ""
-          low = title |> String.toLowerCase
-          => low |> String.includes("backlog")
-        })
-        match backlogSec
-          | Some(sec) => match Option.fromNullishOr(sec.tasks)
-            | Some(tasks) =>
-              tasks |> Array.filter((t) =>
-                not (backlogTasks |> Array.some((b) => b.id #= t.id))
-              )
-            | _ => []
-          | _ => []
-      | _ => []
-    | _ => []
-
+  extraTasks = getExtraTasks(store.tasksDoc, backlogTasks)
   allBacklog = backlogTasks |> Array.appendAll(extraTasks)
 
   // 4. DAG dependency resolution: filter pending and compute unblocked tasks
@@ -340,13 +392,7 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
     (not (completedIds |> Array.contains(t.id))) and (not (activeTaskIds |> Array.contains(t.id)))
   )
 
-  dagNodes = pendingBacklog |> Array.map((t) => {
-    deps = match Option.fromNullishOr(t.dependencies)
-      | Some(d) => d
-      | _ => []
-    node: TaskNode = { id: t.id, dependsOn: deps }
-    => node
-  })
+  dagNodes = pendingBacklog |> Array.map(toTaskNode)
 
   readyIds = findReadyTasks(dagNodes, completedIds)
   unblockedTasks = pendingBacklog |> Array.filter((t) => readyIds |> Array.contains(t.id))
@@ -361,37 +407,12 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
     isSessionRunning = state.activeSessions |> Array.some((s) =>
       s.agentId #= agentId and s.status #= "Running"
     )
+    when (isSessionRunning) => acc
 
-    hasActiveTaskInLane = match Option.fromNullishOr(store.tasksDoc)
-      | Some(doc) => match Option.fromNullishOr(doc.sections)
-        | Some(sections) =>
-          laneSec = sections |> Array.findFirst((s) => {
-            title = match Option.fromNullishOr(s.title)
-              | Some(t) => t
-              | _ => ""
-            low = title |> String.toLowerCase
-            agentIdLow = agentId |> String.toLowerCase
-            => low |> String.includes(agentIdLow)
-          })
-          match laneSec
-            | Some(sec) => match Option.fromNullishOr(sec.tasks)
-              | Some(tasks) =>
-                tasks |> Array.some((t) => {
-                  st = match Option.fromNullishOr(t.status)
-                    | Some(s) => s
-                    | _ => ""
-                  stLow = st |> String.toLowerCase
-                  => stLow #= "in progress"
-                })
-              | _ => false
-            | _ => false
-        | _ => false
-      | _ => false
+    hasActiveTaskInLane = isLaneActiveInDoc(store.tasksDoc, agentId)
+    when (hasActiveTaskInLane) => acc
 
-    isIdle = (not isSessionRunning) and (not hasActiveTaskInLane)
-    match isIdle
-      | true => acc |> Array.append({ agentId: agentId, laneTitle: laneTitle, agentIndex: i })
-      | _ => acc
+    => acc |> Array.append({ agentId: agentId, laneTitle: laneTitle, agentIndex: i })
   })
 
   // 6. Assign ready tasks to idle lanes and execute sequentially
@@ -418,15 +439,30 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
 
 drainMergeQueue = (queue: Any, baseBranch: String): Effect.Effect<Unit, Any, Any> => effect {
   item <- Queue.poll(queue)
-  _ <- match item
-    | Some(rawReq) => effect {
-      req: MergeRequest = decodeMergeRequest(rawReq)
-      _ <- landMergeRequest(req, baseBranch)
-      _ <- drainMergeQueue(queue, baseBranch)
-      => Unit
-    }
-    | _ => Effect.void
+  when (Option.isNone(item)) => Unit
+  rawReq = Option.getOrElse(item, () => "")
+  req: MergeRequest = decodeMergeRequest(rawReq)
+  _ <- landMergeRequest(req, baseBranch)
+  _ <- drainMergeQueue(queue, baseBranch)
   => Unit
+}
+
+resolveMergeQueue = (queueOpt: Option.Option<Unknown>, fallbackQueue: Unknown): Unknown =>
+  Option.getOrElse(queueOpt, () => fallbackQueue)
+
+resolveMaxIterations = (max: Number): Number => {
+  when (max > 0) => max
+  => Infinity
+}
+
+maybeDrainQueue = (hasExternalQueue: Boolean, queue: Any, baseBranch: String): Effect.Effect<Unit, Any, Any> => {
+  when (hasExternalQueue) => Effect.void
+  => drainMergeQueue(queue, baseBranch)
+}
+
+maybeSleep = (nextTick: Number, maxTicks: Number, intervalMs: Number): Effect.Effect<Unit, Any, Any> => {
+  when (nextTick >= maxTicks or intervalMs <= 0) => Effect.void
+  => Effect.sleep(Duration.millis(intervalMs))
 }
 
 export runReconcilerLoop = (config: ReconcilerConfig) => effect {
@@ -434,50 +470,31 @@ export runReconcilerLoop = (config: ReconcilerConfig) => effect {
 
   hasExternalQueue = Option.isSome(Option.fromNullishOr(config.mergeQueue))
   internalQueue <- createMergeTrain(100)
-  resolvedQueue: Unknown = match Option.fromNullishOr(config.mergeQueue)
-    | Some(q) => q
-    | _ => internalQueue
+  resolvedQueue = resolveMergeQueue(Option.fromNullishOr(config.mergeQueue), internalQueue)
 
   resolvedConfig: ReconcilerConfig = {
     ...config,
     mergeQueue: Option.some(resolvedQueue)
   }
 
-  agentCount = match (config.devAgentCount > 0)
-    | true => config.devAgentCount
-    | _ => 2
-
+  agentCount = resolveDevAgentCount(config.devAgentCount)
   initialState: ReconcilerState = initialReconcilerState(agentCount)
   stateRef <- Ref.make(initialState)
 
-  maxIterations = match (config.maxIterations > 0)
-    | true => config.maxIterations
-    | _ => Infinity
-
-  baseBranch = match Option.fromNullishOr(config.baseBranch)
-    | Some(b) => b
-    | _ => "main"
+  maxIterations = resolveMaxIterations(config.maxIterations)
+  baseBranch = resolveBaseBranch(Option.fromNullishOr(config.baseBranch))
 
   loopStep = (): Effect.Effect<ReconcilerState, Any, Any> => effect {
     currentState <- Ref.get(stateRef)
-    res <- match (currentState.tickCount < maxIterations)
-      | true => effect {
-        nextState <- reconcileTick(resolvedConfig, currentState)
-        _ <- Ref.set(stateRef, nextState)
+    when (currentState.tickCount >= maxIterations) => currentState
 
-        _ <- match (not hasExternalQueue)
-          | true => drainMergeQueue(resolvedQueue, baseBranch)
-          | _ => Effect.void
+    nextState <- reconcileTick(resolvedConfig, currentState)
+    _ <- Ref.update(stateRef, () => nextState)
+    _ <- maybeDrainQueue(hasExternalQueue, resolvedQueue, baseBranch)
+    _ <- maybeSleep(nextState.tickCount, maxIterations, config.pollIntervalMs)
 
-        _ <- match (nextState.tickCount < maxIterations and config.pollIntervalMs > 0)
-          | true => Effect.sleep(Duration.millis(config.pollIntervalMs))
-          | _ => Effect.void
-
-        rec <- loopStep()
-        => rec
-      }
-      | _ => Effect.succeed(currentState)
-    => res
+    rec <- loopStep()
+    => rec
   }
 
   finalState <- loopStep()
