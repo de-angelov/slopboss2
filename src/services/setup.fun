@@ -2,7 +2,7 @@ import { Array, Console, Effect, Option, Schema, String } from "effect"
 import { FileSystem, Path } from "effect"
 import { BunServices } from "@effect/platform-bun"
 import { DEFAULT_AGENTS_GUIDELINES, DEFAULT_DEV_AGENT_GUIDELINES, DEFAULT_TEAM_LEAD_GUIDELINES } from "./prompt.js"
-import { runGitCommandSync, SyncServices } from "./platform.js"
+import { runGitCommandSync, SyncServices } from "./sys.js"
 
 export schema WorkspaceInfo = {
   name: String

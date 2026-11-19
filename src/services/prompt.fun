@@ -1,7 +1,7 @@
 import { Array, Effect, Option, Schema, String } from "effect"
 import { FileSystem, Path } from "effect"
 import { BunServices } from "@effect/platform-bun"
-import { SyncServices, runSyncWithPlatform } from "./platform.js"
+import { SyncServices, runSyncWithPlatform } from "./sys.js"
 
 export schema TaskBlock = {
   id: String
