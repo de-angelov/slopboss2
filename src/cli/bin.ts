@@ -2,4 +2,8 @@
 import { Effect } from "effect";
 import { runCli } from "./index.js";
 
-await Effect.runPromise(runCli());
+try {
+  await Effect.runPromise(runCli());
+} catch (_err) {
+  process.exit(1);
+}
