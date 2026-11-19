@@ -60,6 +60,33 @@ describe("verified Git landing", () => {
     expect(execFileSync("git", ["--git-dir", remote, "show", "main:base.txt"], { encoding: "utf8" })).toBe("conflict\n");
   });
 
+  it("lands on the latest base fetched from origin", async () => {
+    const { remote, workspace, request } = setup();
+    git(workspace, "checkout", "main");
+    fs.writeFileSync(path.join(workspace, "new-base.txt"), "fresh\n");
+    git(workspace, "add", "."); git(workspace, "commit", "-m", "advance base"); git(workspace, "push", "origin", "main");
+    const result = await Effect.runPromise(landMergeRequest(request, "main"));
+    expect(result.success).toBe(true);
+    expect(execFileSync("git", ["--git-dir", remote, "show", "main:new-base.txt"], { encoding: "utf8" })).toBe("fresh\n");
+    expect(execFileSync("git", ["--git-dir", remote, "show", "main:base.txt"], { encoding: "utf8" })).toBe("branch change\n");
+  });
+
+  it("fails safely when the base advances while pushing", async () => {
+    const { remote, workspace, request } = setup();
+    git(workspace, "checkout", "main");
+    fs.writeFileSync(path.join(workspace, "concurrent.txt"), "concurrent\n");
+    git(workspace, "add", "."); git(workspace, "commit", "-m", "concurrent base");
+    const concurrentHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: workspace, encoding: "utf8" }).trim();
+    const hook = path.join(remote, "hooks", "pre-receive");
+    fs.writeFileSync(hook, `#!/bin/sh\ngit --git-dir='${remote}' update-ref refs/heads/main ${concurrentHead}\n`);
+    fs.chmodSync(hook, 0o755);
+    const result = await Effect.runPromise(landMergeRequest(request, "main"));
+    expect(result.success).toBe(false);
+    expect(result.commitHash).toEqual(Option.none());
+    expect(Option.getOrElse(result.error, () => "")).toMatch(/Base advanced|Push failed/);
+    expect(execFileSync("git", ["--git-dir", remote, "show", "main:base.txt"], { encoding: "utf8" })).toBe("base\n");
+  });
+
   it("returns push failures without claiming a commit", async () => {
     const { root, remote, request } = setup();
     const hook = path.join(remote, "hooks", "pre-receive"); fs.writeFileSync(hook, "#!/bin/sh\nexit 1\n"); fs.chmodSync(hook, 0o755);
