@@ -268,6 +268,7 @@ ts {
         yield* acquireBoardLock(config.boardDir);
 
         // 2. Initialize merge train queue
+        const hasExternalQueue = Boolean(config.mergeQueue);
         const mergeQueue = yield* createMergeTrain(100);
         const resolvedConfig: ReconcilerConfig = {
           ...config,
@@ -283,6 +284,19 @@ ts {
         while (currentState.tickCount < maxIterations) {
           currentState = yield* reconcileTick(resolvedConfig, currentState);
           yield* Ref.set(stateRef, currentState);
+
+          // Drain and land any enqueued merge requests through the linearized merge train
+          if (!hasExternalQueue && resolvedConfig.mergeQueue) {
+            let hasItem = true;
+            while (hasItem) {
+              const item = yield* Queue.poll(resolvedConfig.mergeQueue);
+              if (Option.isSome(item)) {
+                yield* landMergeRequest(item.value, resolvedConfig.baseBranch || "main");
+              } else {
+                hasItem = false;
+              }
+            }
+          }
 
           if (currentState.tickCount < maxIterations && config.pollIntervalMs > 0) {
             yield* Effect.sleep(`${config.pollIntervalMs} millis`);
