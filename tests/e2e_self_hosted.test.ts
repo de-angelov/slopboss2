@@ -243,4 +243,47 @@ Implement dependent component relying on SB2-BASE-01.
     expect(typeof Bun).toBe("object");
     expect(typeof Bun.version).toBe("string");
   });
+
+  it("verifies bin.fun executable runs standalone subcommands --help, doctor, and status directly under Bun", async () => {
+    const binPath = path.resolve(__dirname, "../src/cli/bin.fun");
+
+    // 1. Check bin.fun exists and is executable
+    expect(fs.existsSync(binPath)).toBe(true);
+    const stat = fs.statSync(binPath);
+    expect(stat.mode & 0o111).toBeGreaterThan(0);
+
+    // 2. Test ./src/cli/bin.fun --help
+    const helpProc = Bun.spawn([binPath, "--help"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const helpOut = await new Response(helpProc.stdout).text();
+    const helpCode = await helpProc.exited;
+    expect(helpCode).toBe(0);
+    expect(helpOut).toContain("slopboss2 - Autonomous multi-agent orchestrator");
+    expect(helpOut).toContain("doctor");
+    expect(helpOut).toContain("status");
+
+    // 3. Test ./src/cli/bin.fun doctor --dir <tempDir>
+    await Effect.runPromise(initBoardStructure(tempDir, "", 2));
+    const doctorProc = Bun.spawn([binPath, "doctor", "--dir", tempDir], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const doctorOut = await new Response(doctorProc.stdout).text();
+    const doctorCode = await doctorProc.exited;
+    expect(doctorCode).toBe(0);
+    expect(doctorOut).toContain("Diagnostic Check Results:");
+    expect(doctorOut).toContain("Overall Health:");
+
+    // 4. Test ./src/cli/bin.fun status --dir <tempDir>
+    const statusProc = Bun.spawn([binPath, "status", "--dir", tempDir], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const statusOut = await new Response(statusProc.stdout).text();
+    const statusCode = await statusProc.exited;
+    expect(statusCode).toBe(0);
+    expect(statusOut).toContain("SLOPBOSS2 BOARD STATUS");
+  }, 30000);
 });
