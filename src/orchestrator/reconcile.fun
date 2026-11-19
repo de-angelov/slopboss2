@@ -16,8 +16,8 @@ export schema OrchestratorState = {
   agents: Array<AgentState>
 }
 
-export initialOrchestratorState = () =>
-  agents = [
+export initialOrchestratorState = (): OrchestratorState => {
+  agents: Array<AgentState> = [
     {
       id: "Dev Agent 1",
       status: "Idle",
@@ -35,6 +35,7 @@ export initialOrchestratorState = () =>
     tickCount: 0,
     agents: agents
   }
+}
 
 export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) => effect {
   state <- Ref.get(stateRef)
@@ -46,7 +47,7 @@ export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) 
     | 1 => Console.log("  -> Working: Dev Agent 1 on agent/1/sb2-03, Dev Agent 2 on agent/2/sb2-05")
     | _ => Console.log("  -> Merged: All branches merged to main. Tasks marked Done.")
 
-  updatedAgents = match state.tickCount
+  updatedAgents: Array<AgentState> = match state.tickCount
     | 0 => [
         { id: "Dev Agent 1", status: "Running", currentTask: Option.some("SB2-03"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
         { id: "Dev Agent 2", status: "Running", currentTask: Option.some("SB2-05"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
@@ -57,7 +58,10 @@ export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) 
         { id: "Dev Agent 2", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
       ]
   
-  _ <- Ref.set(stateRef, { tickCount: newTick, agents: updatedAgents })
+  _ <- Ref.update(stateRef, (s) => {
+    tickCount: newTick,
+    agents: updatedAgents
+  })
   => newTick
 }
 
@@ -70,12 +74,9 @@ export startReconcileLoop = (boardDir: String, maxTicks: Number) => effect {
   result <- repeated
   finalState <- Ref.get(stateRef)
   _ <- Console.log("Orchestrator completed " + globalThis.String(maxTicks) + " iterations. Final agent statuses:")
-  _ <- match finalState.agents
-    | [a1, a2, ..._] => effect {
-      _ <- Console.log("  " + a1.id + ": " + a1.status)
-      _ <- Console.log("  " + a2.id + ": " + a2.status)
-      => true
-    }
-    | _ => Console.log("  No agents active")
+  hasAgents = (finalState.agents |> Array.length) > 0
+  _ <- match hasAgents
+    | true => Effect.forEach(finalState.agents, (a: AgentState) => Console.log("  " + a.id + ": " + a.status))
+    | false => Console.log("  No agents active")
   => result
 }
