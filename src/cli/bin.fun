@@ -3,7 +3,13 @@ import { BunServices } from "@effect/platform-bun"
 import { runCli } from "./index.js"
 
 program = runCli() |> Effect.provide(BunServices.layer)
-export main = () => Effect.runPromise(program).catch((_err: Unknown) => process.exit(1))
+export main = () => {
+  p: Promise<Unknown> = Reflect.apply(Effect.runPromise, Effect, [program])
+  => p.catch((_err: Unknown) => process.exit(1))
+}
 
-res = main()
+res: Unknown = main()
+
+
+
 
