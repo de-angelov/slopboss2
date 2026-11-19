@@ -7,10 +7,10 @@
     "slopboss2": "./src/cli/bin.ts"
   },
   "scripts": {
-    "build": "funscript build src/cli/index.fun src/domain/board.fun src/domain/session.fun src/services/git.fun src/services/provider.fun src/orchestrator/reconcile.fun --outDir dist --sourcemap",
+    "build": "bun run scripts/check-purity.ts && funscript build src/cli/index.fun src/cli/view.fun src/orchestrator/dispatcher.fun --outDir dist --sourcemap",
     "check": "funscript check src/ --no-ts",
     "typecheck": "funscript check src/ --no-ts",
-    "test": "bun test",
+    "test": "bun run scripts/check-purity.ts && bun test",
     "start": "bun run src/cli/bin.ts"
   },
   "dependencies": {

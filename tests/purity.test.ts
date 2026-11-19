@@ -400,6 +400,7 @@ ts {
     it("verifies pure production files in src/ pass purity check", () => {
       const pureFiles = [
         "src/services/tokens.fun",
+        "src/services/prompt.fun",
         "src/services/coordination.fun",
         "src/domain/boardstore.fun",
         "src/domain/dag.fun",
@@ -409,7 +410,11 @@ ts {
         "src/services/setup.fun",
         "src/services/provider.fun",
         "src/services/git.fun",
+        "src/ui/dashboard.fun",
+        "src/cli/index.fun",
+        "src/cli/view.fun",
         "src/orchestrator/reconcile.fun",
+        "src/orchestrator/dispatcher.fun",
         "src/orchestrator/mergetrain.fun",
       ];
 
