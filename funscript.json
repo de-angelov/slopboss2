@@ -1,0 +1,11 @@
+{
+  "entry": [
+    "src/cli/bin.fun",
+    "src/cli/index.fun",
+    "src/cli/view.fun",
+    "src/domain/boardstore.fun",
+    "src/services/sys.fun",
+    "src/services/doctor.fun",
+    "src/services/setup.fun"
+  ]
+}
