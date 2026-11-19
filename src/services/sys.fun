@@ -26,24 +26,22 @@ export safeSpawnSync = (cmd: Array<String>, envOpt: Unknown = Option.none(), cwd
       match envOpt
         | Some(e) => globalThis.Object.assign(opts, { env: globalThis.Object.assign({}, globalThis.process.env, e) })
         | None => 0
-        | _ => match globalThis.Boolean(envOpt)
-          | true => globalThis.Object.assign(opts, { env: globalThis.Object.assign({}, globalThis.process.env, envOpt) })
-          | false => 0
+        | _ => match Option.fromNullishOr(envOpt)
+          | Some(e) => globalThis.Object.assign(opts, { env: globalThis.Object.assign({}, globalThis.process.env, e) })
+          | None => 0
       cmdArray = globalThis.Array.from(cmd)
       proc = globalThis.Bun.spawnSync(cmdArray, opts)
-      rawOut = match (globalThis.Boolean(proc.stdout))
-        | true => proc.stdout.toString()
-        | false => ""
+      rawOut = match Option.fromNullishOr(proc.stdout)
+        | Some(out) => out.toString()
+        | None => ""
       outStr = rawOut |> String.trim
-      rawErr = match (globalThis.Boolean(proc.stderr))
-        | true => proc.stderr.toString()
-        | false => ""
+      rawErr = match Option.fromNullishOr(proc.stderr)
+        | Some(err) => err.toString()
+        | None => ""
       errStr = rawErr |> String.trim
-      code = match (proc.exitCode #= 0)
-        | true => 0
-        | false => match (globalThis.Boolean(proc.exitCode))
-          | true => proc.exitCode
-          | false => 1
+      code = match Option.fromNullishOr(proc.exitCode)
+        | Some(c) => c
+        | None => 1
       => {
         exitCode: code,
         stdout: outStr,
@@ -79,18 +77,18 @@ export schema GitSubprocessResult = {
 
 export runGitCommandSync = (args: Array<String>, cwd: String = ""): GitSubprocessResult => {
   gitCmd = ["git"] |> Array.appendAll(args)
-  authorName = match (globalThis.Boolean(globalThis.process.env.GIT_AUTHOR_NAME))
-    | true => globalThis.process.env.GIT_AUTHOR_NAME
-    | false => "Slopboss"
-  authorEmail = match (globalThis.Boolean(globalThis.process.env.GIT_AUTHOR_EMAIL))
-    | true => globalThis.process.env.GIT_AUTHOR_EMAIL
-    | false => "slopboss@local"
-  committerName = match (globalThis.Boolean(globalThis.process.env.GIT_COMMITTER_NAME))
-    | true => globalThis.process.env.GIT_COMMITTER_NAME
-    | false => "Slopboss"
-  committerEmail = match (globalThis.Boolean(globalThis.process.env.GIT_COMMITTER_EMAIL))
-    | true => globalThis.process.env.GIT_COMMITTER_EMAIL
-    | false => "slopboss@local"
+  authorName = match Option.fromNullishOr(globalThis.process.env.GIT_AUTHOR_NAME)
+    | Some(name) => name
+    | None => "Slopboss"
+  authorEmail = match Option.fromNullishOr(globalThis.process.env.GIT_AUTHOR_EMAIL)
+    | Some(email) => email
+    | None => "slopboss@local"
+  committerName = match Option.fromNullishOr(globalThis.process.env.GIT_COMMITTER_NAME)
+    | Some(name) => name
+    | None => "Slopboss"
+  committerEmail = match Option.fromNullishOr(globalThis.process.env.GIT_COMMITTER_EMAIL)
+    | Some(email) => email
+    | None => "slopboss@local"
   envObj = {
     GIT_TERMINAL_PROMPT: "0",
     GIT_AUTHOR_NAME: authorName,
