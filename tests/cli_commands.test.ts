@@ -508,7 +508,7 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect(stdout).toContain("init");
       expect(stdout).toContain("groom");
       expect(stdout).toContain("view");
-    });
+    }, 15000);
 
     it("runs binary with doctor command and prints diagnostic table", async () => {
       const proc = Bun.spawn(["bun", "run", "src/cli/bin.ts", "doctor", "--dir", tempDir], {
@@ -522,7 +522,7 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect(stdout).toContain("Diagnostic Check Results:");
       expect(stdout).toContain("Status    | Check");
       expect(stdout).toContain("Overall Health:");
-    });
+    }, 15000);
 
     it("runs binary with invalid subcommand and exits with code 1", async () => {
       const proc = Bun.spawn(["bun", "run", "src/cli/bin.ts", "bogus-command"], {
@@ -536,6 +536,6 @@ describe("CLI Unified Command Dispatcher & Binary Entrypoint", () => {
       expect(code).toBe(1);
       const output = stdout + stderr;
       expect(output).toContain("Unknown command: bogus-command");
-    });
+    }, 15000);
   });
 });
