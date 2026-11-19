@@ -10,7 +10,8 @@ export schema SessionResult = {
 // Spawns a process wrapped in the caller's Effect Scope lifecycle.
 // On Scope exit (interruption, error, or completion), SIGTERM is sent to guarantee no orphaned processes.
 export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscoped) {
-  proc = globalThis.Bun.spawn(cmd, {
+  cmdArr = globalThis.Array.from(cmd)
+  proc = globalThis.Bun.spawn(cmdArr, {
     cwd: cwd,
     stdin: "pipe",
     stdout: "pipe",
@@ -38,11 +39,11 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
     | None =>
       proc.stdin.end()
   rawOut <- js globalThis.Bun.readableStreamToText(proc.stdout)
-  outText = rawOut |> Option.getOrElse(() => "")
+  outText = rawOut |> Option.flatMap(Schema.decodeUnknownOption(Schema.String)) |> Option.getOrElse(() => "")
   rawCode <- js proc.exited
-  code = rawCode |> Option.getOrElse(() => 0)
+  code = rawCode |> Option.flatMap(Schema.decodeUnknownOption(Schema.Number)) |> Option.getOrElse(() => 0)
   lines = outText |> String.split("\n")
-  events = lines |> Array.filterMap(parseAgyLine)
+  events = lines |> Array.map(parseAgyLine) |> Array.getSomes
   isCompleted = events |> Array.some((e) => match e
     | SessionCompleted => true
     | _ => false

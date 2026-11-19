@@ -3,7 +3,7 @@ import { archiveTask, BoardStore, loadBoardStoreSync, moveTask, parseBacklogTask
 import { findReadyTasks, TaskNode } from "../domain/dag.js"
 import { acquireBoardLock } from "../services/coordination.js"
 import { buildDevAgentPrompt } from "../services/prompt.js"
-import { runMockAgentSession } from "../services/runner.js"
+import { runMockAgentSession, SessionResult } from "../services/runner.js"
 import { createMergeTrain, enqueueMergeRequest, landMergeRequest, MergeRequest } from "./mergetrain.js"
 
 export schema ActiveAgentSession = {
@@ -78,13 +78,20 @@ export schema PairItem = {
   taskToAssign: TaskBlock
 }
 
-export initialReconcilerState = (devAgentCount: Number = 2) => {
-  tickCount: 0,
-  activeSessions: [],
-  tokenCounter: {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0
+decodeSessionResult = Schema.decodeUnknownSync(SessionResult)
+decodePairItem = Schema.decodeUnknownSync(PairItem)
+decodeMergeRequest = Schema.decodeUnknownSync(MergeRequest)
+
+export initialReconcilerState = (devAgentCount: Number = 2): ReconcilerState => {
+  emptySessions: Array<RunningSession> = []
+  => {
+    tickCount: 0,
+    activeSessions: emptySessions,
+    tokenCounter: {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0
+    }
   }
 }
 
@@ -95,18 +102,19 @@ getDocCompletedIds = (archiveDoc: TasksDocument): Array<String> => {
   sections = match Option.fromNullishOr(archiveDoc)
     | Some(doc) => match Option.fromNullishOr(doc.sections)
       | Some(s) => s
-      | None => []
-    | None => []
+      | _ => []
+    | _ => []
   res = sections |> Array.flatMap((sec) => {
     tasks = match Option.fromNullishOr(sec.tasks)
       | Some(t) => t
-      | None => []
-    => tasks |> Array.reduce([], (acc, t) =>
+      | _ => []
+    initAcc: Array<String> = []
+    => tasks |> Array.reduce(initAcc, (acc, t) =>
       match Option.fromNullishOr(t.id)
         | Some(id) => match (id #! "")
           | true => acc |> Array.append(id)
-          | false => acc
-        | None => acc
+          | _ => acc
+        | _ => acc
     )
   })
   => res
@@ -115,24 +123,26 @@ getDocCompletedIds = (archiveDoc: TasksDocument): Array<String> => {
 getContentCompletedIds = (archiveContent: String): Array<String> => {
   content = match Option.fromNullishOr(archiveContent)
     | Some(c) => c
-    | None => ""
+    | _ => ""
   when (content #= "") => []
 
   bulletRx = globalThis.RegExp("- \\[x\\]\\s+([A-Za-z0-9_-]+):", "gi")
   taskRx = globalThis.RegExp("Task ID:\\s*([A-Za-z0-9_-]+)", "gi")
 
   matches1 = globalThis.Array.from(content.matchAll(bulletRx))
-  ids1 = matches1 |> Array.reduce([], (acc, m) =>
+  initIds1: Array<String> = []
+  ids1 = matches1 |> Array.reduce(initIds1, (acc, m) =>
     match m[1]
       | Some(id) => acc |> Array.append(id)
-      | None => acc
+      | _ => acc
   )
 
   matches2 = globalThis.Array.from(content.matchAll(taskRx))
-  ids2 = matches2 |> Array.reduce([], (acc, m) =>
+  initIds2: Array<String> = []
+  ids2 = matches2 |> Array.reduce(initIds2, (acc, m) =>
     match m[1]
       | Some(id) => acc |> Array.append(id)
-      | None => acc
+      | _ => acc
   )
 
   => ids1 |> Array.appendAll(ids2)
@@ -149,59 +159,75 @@ zipIdleAndTasks = (agents: Array<IdleAgent>, tasks: Array<TaskBlock>): Array<Pai
   minLen = globalThis.Math.min(agents.length, tasks.length)
   when (minLen <= 0) => []
   indices = Array.range(0, minLen - 1)
-  res = indices |> Array.reduce([], (acc, i) => {
+  initPairs: Array<PairItem> = []
+  res = indices |> Array.reduce(initPairs, (acc, i) => {
     aOpt = agents[i]
     tOpt = tasks[i]
     match aOpt
       | Some(a) => match tOpt
         | Some(t) => acc |> Array.append({ idle: a, taskToAssign: t })
-        | None => acc
-      | None => acc
+        | _ => acc
+      | _ => acc
   })
   => res
 }
 
-processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession>, currentTokens: TokenCounter, boardDir: String, baseBranch: String, store: BoardStore, config: ReconcilerConfig): Effect.Effect<AssignmentResult> => effect {
-  res <- match pairList
-    | [] => Effect.succeed({ sessions: currentSessions, tokens: currentTokens })
-    | [head, ...tail] => effect {
-      idle = head.idle
-      taskToAssign = head.taskToAssign
+processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession>, currentTokens: TokenCounter, boardDir: String, baseBranch: String, store: BoardStore, config: ReconcilerConfig): Effect.Effect<AssignmentResult, Any, Any> => effect {
+  headOpt = Array.head(pairList)
+  res <- match headOpt
+    | Some(headItem) => effect {
+      tail = pairList |> Array.drop(1)
+      idle: IdleAgent = headItem.idle
+      taskToAssign: TaskBlock = headItem.taskToAssign
 
-      branchName = match Option.fromNullishOr(taskToAssign.branch)
+      branchName: String = match Option.fromNullishOr(taskToAssign.branch)
         | Some(b) =>
           trimmed = b |> String.trim
           match (trimmed #= "")
             | true => "agent/" + globalThis.String(idle.agentIndex) + "/" + (taskToAssign.id |> String.toLowerCase)
-            | false => b
-        | None => "agent/" + globalThis.String(idle.agentIndex) + "/" + (taskToAssign.id |> String.toLowerCase)
+            | _ => b
+        | _ => "agent/" + globalThis.String(idle.agentIndex) + "/" + (taskToAssign.id |> String.toLowerCase)
 
-      taskAssigned = {
-        ...taskToAssign,
+      taskAssigned: TaskBlock = {
+        id: taskToAssign.id,
+        title: taskToAssign.title,
+        category: taskToAssign.category,
         owner: idle.agentId,
+        branch: branchName,
         status: "In Progress",
-        branch: branchName
+        dependencies: taskToAssign.dependencies,
+        objective: taskToAssign.objective,
+        scope: taskToAssign.scope,
+        acceptanceCriteria: taskToAssign.acceptanceCriteria,
+        rawBody: taskToAssign.rawBody
       }
 
-      _moveRes = moveTask(store, taskAssigned.id, idle.laneTitle)
-      _persistRes1 = persistBoardStoreSync(store)
+      _moveRes: Unknown = moveTask(store, taskAssigned.id, idle.laneTitle)
+      _persistRes1: Unknown = persistBoardStoreSync(store)
 
       workspacePath = boardDir + "/workspaces/repo-agent-" + globalThis.String(idle.agentIndex)
 
-      prompt = buildDevAgentPrompt(boardDir, taskAssigned, idle.agentId)
+      prompt: String = buildDevAgentPrompt(boardDir, taskAssigned, idle.agentId)
 
       runRes <- match Option.fromNullishOr(config.runnerFn)
-        | Some(runner) => runner(idle.agentId, taskAssigned.id, prompt)
-        | None => runMockAgentSession(idle.agentId, taskAssigned.id)
+        | Some(runner) => effect {
+          runnerAny: Any = runner
+          runnerCall: (a: String, b: String, c: String) => Effect.Effect<Unknown, Any, Any> = runnerAny
+          resEffect = runnerCall(idle.agentId, taskAssigned.id, prompt)
+          rawRes <- resEffect
+          sessionRes = decodeSessionResult(rawRes)
+          => sessionRes
+        }
+        | _ => runMockAgentSession(idle.agentId, taskAssigned.id)
 
-      usedTokens = match Option.fromNullishOr(runRes.totalTokens)
+      usedTokens: Number = match Option.fromNullishOr(runRes.totalTokens)
         | Some(tot) => tot
-        | None => 1420
+        | _ => 1420
 
       inTokens = globalThis.Math.floor(usedTokens * 0.7)
       outTokens = globalThis.Math.ceil(usedTokens * 0.3)
 
-      updatedTokens = {
+      updatedTokens: TokenCounter = {
         inputTokens: currentTokens.inputTokens + inTokens,
         outputTokens: currentTokens.outputTokens + outTokens,
         totalTokens: currentTokens.totalTokens + usedTokens
@@ -220,15 +246,22 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
           }
 
           _ <- match Option.fromNullishOr(config.mergeQueue)
-            | Some(queue) => enqueueMergeRequest(queue, mergeReq)
-            | None => landMergeRequest(mergeReq, baseBranch)
+            | Some(queue) => effect {
+              q: Any = queue
+              _ <- enqueueMergeRequest(q, mergeReq)
+              => Unit
+            }
+            | _ => effect {
+              _ <- landMergeRequest(mergeReq, baseBranch)
+              => Unit
+            }
 
-          _archiveRes = archiveTask(store, taskAssigned.id)
-          _persistRes2 = persistBoardStoreSync(store)
+          _archiveRes: Unknown = archiveTask(store, taskAssigned.id)
+          _persistRes2: Unknown = persistBoardStoreSync(store)
 
           => currentSessions
         }
-        | false => effect {
+        | _ => effect {
           failedSession: RunningSession = {
             agentId: idle.agentId,
             taskId: taskAssigned.id,
@@ -250,18 +283,19 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
       )
       => nextResult
     }
+    | _ => Effect.succeed({ sessions: currentSessions, tokens: currentTokens })
   => res
 }
 
-export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effect.Effect<ReconcilerState> => effect {
+export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effect.Effect<ReconcilerState, Any, Any> => effect {
   nextTick = state.tickCount + 1
   boardDir = config.boardDir
   baseBranch = match Option.fromNullishOr(config.baseBranch)
     | Some(b) => b
-    | None => "main"
+    | _ => "main"
   devAgentCount = match (config.devAgentCount > 0)
     | true => config.devAgentCount
-    | false => 2
+    | _ => 2
 
   // 1. Load board store
   store = loadBoardStoreSync(boardDir)
@@ -272,7 +306,7 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
   // 3. Collect backlog tasks
   rawBacklog = match Option.fromNullishOr(store.backlogContent)
     | Some(c) => c
-    | None => ""
+    | _ => ""
   backlogTasks = parseBacklogTasks(rawBacklog)
 
   extraTasks = match Option.fromNullishOr(store.tasksDoc)
@@ -281,7 +315,7 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
         backlogSec = sections |> Array.findFirst((s) => {
           title = match Option.fromNullishOr(s.title)
             | Some(t) => t
-            | None => ""
+            | _ => ""
           low = title |> String.toLowerCase
           => low |> String.includes("backlog")
         })
@@ -291,10 +325,10 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
               tasks |> Array.filter((t) =>
                 not (backlogTasks |> Array.some((b) => b.id #= t.id))
               )
-            | None => []
-          | None => []
-      | None => []
-    | None => []
+            | _ => []
+          | _ => []
+      | _ => []
+    | _ => []
 
   allBacklog = backlogTasks |> Array.appendAll(extraTasks)
 
@@ -307,7 +341,7 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
   dagNodes = pendingBacklog |> Array.map((t) => {
     deps = match Option.fromNullishOr(t.dependencies)
       | Some(d) => d
-      | None => []
+      | _ => []
     node: TaskNode = { id: t.id, dependsOn: deps }
     => node
   })
@@ -317,7 +351,8 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
 
   // 5. Detect idle lanes
   agentIndices = Array.range(1, devAgentCount)
-  idleAgents = agentIndices |> Array.reduce([], (acc, i) => {
+  initIdle: Array<IdleAgent> = []
+  idleAgents = agentIndices |> Array.reduce(initIdle, (acc, i) => {
     agentId = "Dev Agent " + globalThis.String(i)
     laneTitle = "Dev Agent " + globalThis.String(i) + " In Progress"
 
@@ -331,7 +366,7 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
           laneSec = sections |> Array.findFirst((s) => {
             title = match Option.fromNullishOr(s.title)
               | Some(t) => t
-              | None => ""
+              | _ => ""
             low = title |> String.toLowerCase
             agentIdLow = agentId |> String.toLowerCase
             => low |> String.includes(agentIdLow)
@@ -342,19 +377,19 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
                 tasks |> Array.some((t) => {
                   st = match Option.fromNullishOr(t.status)
                     | Some(s) => s
-                    | None => ""
+                    | _ => ""
                   stLow = st |> String.toLowerCase
                   => stLow #= "in progress"
                 })
-              | None => false
-            | None => false
-        | None => false
-      | None => false
+              | _ => false
+            | _ => false
+        | _ => false
+      | _ => false
 
     isIdle = (not isSessionRunning) and (not hasActiveTaskInLane)
     match isIdle
       | true => acc |> Array.append({ agentId: agentId, laneTitle: laneTitle, agentIndex: i })
-      | false => acc
+      | _ => acc
   })
 
   // 6. Assign ready tasks to idle lanes and execute sequentially
@@ -371,22 +406,24 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
     config
   )
 
-  => {
+  resState: ReconcilerState = {
     tickCount: nextTick,
     activeSessions: assignRes.sessions,
     tokenCounter: assignRes.tokens
   }
+  => resState
 }
 
-drainMergeQueue = (queue: Queue.Queue<MergeRequest>, baseBranch: String): Effect.Effect<Unit> => effect {
+drainMergeQueue = (queue: Any, baseBranch: String): Effect.Effect<Unit, Any, Any> => effect {
   item <- Queue.poll(queue)
   _ <- match item
-    | Some(req) => effect {
+    | Some(rawReq) => effect {
+      req: MergeRequest = decodeMergeRequest(rawReq)
       _ <- landMergeRequest(req, baseBranch)
       _ <- drainMergeQueue(queue, baseBranch)
       => Unit
     }
-    | None => Effect.void
+    | _ => Effect.void
   => Unit
 }
 
@@ -397,47 +434,47 @@ export runReconcilerLoop = (config: ReconcilerConfig) => effect {
   internalQueue <- createMergeTrain(100)
   resolvedQueue = match Option.fromNullishOr(config.mergeQueue)
     | Some(q) => q
-    | None => internalQueue
+    | _ => internalQueue
 
   resolvedConfig: ReconcilerConfig = {
     ...config,
-    mergeQueue: resolvedQueue
+    mergeQueue: Option.some(resolvedQueue)
   }
 
   agentCount = match (config.devAgentCount > 0)
     | true => config.devAgentCount
-    | false => 2
+    | _ => 2
 
-  initialState = initialReconcilerState(agentCount)
+  initialState: ReconcilerState = initialReconcilerState(agentCount)
   stateRef <- Ref.make(initialState)
 
   maxIterations = match (config.maxIterations > 0)
     | true => config.maxIterations
-    | false => globalThis.Infinity
+    | _ => globalThis.Infinity
 
   baseBranch = match Option.fromNullishOr(config.baseBranch)
     | Some(b) => b
-    | None => "main"
+    | _ => "main"
 
-  loopStep = (): Effect.Effect<ReconcilerState> => effect {
+  loopStep = (): Effect.Effect<ReconcilerState, Any, Any> => effect {
     currentState <- Ref.get(stateRef)
     res <- match (currentState.tickCount < maxIterations)
-      | false => Effect.succeed(currentState)
       | true => effect {
         nextState <- reconcileTick(resolvedConfig, currentState)
         _ <- Ref.set(stateRef, nextState)
 
         _ <- match (not hasExternalQueue)
           | true => drainMergeQueue(resolvedQueue, baseBranch)
-          | false => Effect.void
+          | _ => Effect.void
 
         _ <- match (nextState.tickCount < maxIterations and config.pollIntervalMs > 0)
           | true => Effect.sleep(Duration.millis(config.pollIntervalMs))
-          | false => Effect.void
+          | _ => Effect.void
 
         rec <- loopStep()
         => rec
       }
+      | _ => Effect.succeed(currentState)
     => res
   }
 

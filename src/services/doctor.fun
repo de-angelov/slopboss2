@@ -118,7 +118,7 @@ export checkProviderInstalledWorkflow = (providers: Array<String>) => effect {
     | true => ["agy", "gemini"]
     | false => providers
 
-  mut found = Option.none()
+  mut found: Option<CheckResult> = Option.none()
   _ = listToCheck |> Array.forEach((p) => {
     when (Option.isSome(found)) => true
     res = safeSpawnSync([p, "--version"])
