@@ -71,3 +71,6 @@ export renderDashboard = (state: DashboardState, clearScreen: Boolean) =>
   logsSection = renderLogsSection(state.recentLogs) + "\n"
 
   => clearPrefix + banner + title + banner + boardLine + divider + lanesSection + divider + tokensLine + divider + logsSection + banner
+
+export renderFullDashboard = (state: DashboardState) =>
+  renderDashboard(state, true)

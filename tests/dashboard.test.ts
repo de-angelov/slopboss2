@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { Option } from "effect";
 import {
   renderDashboard,
+  renderFullDashboard,
   renderLane,
   renderTokenSection,
   renderLogsSection,
@@ -81,5 +82,11 @@ describe("Terminal UI Live View & Dashboard", () => {
   it("prepends ANSI clear-screen escape codes when clearScreen=true", () => {
     const dashboard = renderDashboard(mockState, true);
     expect(dashboard.startsWith("\u001b[2J\u001b[H")).toBe(true);
+  });
+
+  it("renders full dashboard using renderFullDashboard helper", () => {
+    const dashboard = renderFullDashboard(mockState);
+    expect(dashboard.startsWith("\u001b[2J\u001b[H")).toBe(true);
+    expect(dashboard).toContain("SLOPBOSS2 LIVE AGENT DASHBOARD");
   });
 });

@@ -3,6 +3,7 @@ import { buildAgyCommand, buildInteractiveCommand } from "../services/provider.j
 import { buildCloneCommand } from "../services/git.js"
 import { startReconcileLoop } from "../orchestrator/reconcile.js"
 import { initBoardStructure } from "../services/setup.js"
+import { runLiveView } from "./view.js"
 
 export buildGroomPrompt = (boardDir: String, backlogContent: String) =>
   header = "You are the autonomous Team Lead for slopboss2.\n"
@@ -67,7 +68,8 @@ export runCli = () => effect
     | "setup" => runSetup(boardDir, "https://github.com/de-angelov/slopboss2.git")
     | "init" => runSetup(boardDir, "https://github.com/de-angelov/slopboss2.git")
     | "status" => printStatus(boardDir)
+    | "view" => runLiveView(boardDir, 1000)
     | "groom" => launchInteractiveGroom(boardDir, Option.none())
     | "run" => runControlLoop(boardDir, 3)
-    | other => Console.log("Unknown command: " + other + ". Usage: slopboss2 [setup|init|status|groom|run] [boardDir]")
+    | other => Console.log("Unknown command: " + other + ". Usage: slopboss2 [setup|init|status|groom|run|view] [boardDir]")
   => true
