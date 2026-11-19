@@ -15,19 +15,14 @@ runSyncEffect = <A>(eff: Effect.Effect<A, Never>): A => {
 }
 
 export isPidAlive = (pid: Number) => {
-  res = match
-    | pid <= 0 => false
-    | _ =>
-      eff = Effect.try(() => globalThis.process.kill(pid, 0)) |> Effect.map(() => true) |> Effect.orElseSucceed(() => false)
-      runSyncEffect(eff)
-  => res
+  when (pid <= 0) => false
+  eff = Effect.try(() => globalThis.process.kill(pid, 0)) |> Effect.map(() => true) |> Effect.orElseSucceed(() => false)
+  => runSyncEffect(eff)
 }
 
 export getLockPath = (boardDir: String) => {
-  res = match
-    | boardDir |> String.endsWith("/") => boardDir + ".slopboss-board.lock"
-    | _ => boardDir + "/.slopboss-board.lock"
-  => res
+  when (boardDir |> String.endsWith("/")) => boardDir + ".slopboss-board.lock"
+  => boardDir + "/.slopboss-board.lock"
 }
 
 // --- Helpers ---
@@ -44,20 +39,12 @@ logAndRemoveLock = (fsService: FileSystem.FileSystem, lockPath: String, reason: 
 }
 
 handleValidLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir: String, lock: BoardLock) => {
-  res = match
-    | lock.pid > 0 =>
-      alive = isPidAlive(lock.pid)
-      match alive
-        | true =>
-          Effect.fail(BoardLockedError({
-            message: "Board at " + boardDir + " is locked by active PID " + globalThis.String(lock.pid),
-            pid: lock.pid
-          }))
-        | false =>
-          logAndRemoveLock(fsService, lockPath, "Stale lock detected for dead PID " + globalThis.String(lock.pid))
-    | _ =>
-      logAndRemoveLock(fsService, lockPath, "Corrupted lock file detected")
-  => res
+  when (lock.pid <= 0) => logAndRemoveLock(fsService, lockPath, "Corrupted lock file detected")
+  when (not isPidAlive(lock.pid)) => logAndRemoveLock(fsService, lockPath, "Stale lock detected for dead PID " + globalThis.String(lock.pid))
+  => Effect.fail(BoardLockedError({
+    message: "Board at " + boardDir + " is locked by active PID " + globalThis.String(lock.pid),
+    pid: lock.pid
+  }))
 }
 
 handleExistingLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir: String) => effect {
