@@ -42,6 +42,33 @@ export schema BoardInitResultTs = BoardInitResult
 export schema SetupResult = BoardInitResult
 export schema SetupResultTs = SetupResult
 
+export schema RuntimeConfig = {
+  repository: String
+  originUrl: String
+  baseBranch: String
+  provider: String
+  devAgentCount: Number
+}
+
+export defaultRuntimeConfig = (): RuntimeConfig => ({
+  repository: "",
+  originUrl: "",
+  baseBranch: "main",
+  provider: "agy",
+  devAgentCount: 2
+})
+
+readRuntimeConfigWorkflow = (boardDir: String) => effect {
+  fs <- FileSystem.FileSystem
+  raw <- fs.readFileString(boardDir + "/.slopboss.json") |> Effect.option
+  parsed = Option.flatMap(raw, (s) => Schema.decodeUnknownOption(Schema.fromJsonString(RuntimeConfig))(s))
+  => Option.getOrElse(parsed, defaultRuntimeConfig)
+}
+
+export readRuntimeConfig = (boardDir: String) => readRuntimeConfigWorkflow(boardDir) |> Effect.provide(BunServices.layer)
+
+export readRuntimeConfigSync = (boardDir: String): RuntimeConfig => Effect.runSync(readRuntimeConfigWorkflow(boardDir) |> Effect.provide(SyncServices.layer))
+
 export schema GitCommandResult = {
   exitCode: Number
   stdout: String
@@ -516,12 +543,15 @@ export verifyWorkspacesReady = (boardDir: String, devAgentCount: Number = 2) => 
 
 export verifyWorkspacesReadySync = (boardDir: String, devAgentCount: Number = 2) => Effect.runSync(verifyWorkspacesReadyWorkflow(boardDir, devAgentCount) |> Effect.provide(SyncServices.layer))
 
-export initBoardStructureWorkflow = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2) => effect {
+export initBoardStructureWorkflow = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => effect {
   count = Math.max(1, devAgentCount)
 
   filesCreated <- scaffoldBoardMarkdownWorkflow(boardDir, count)
   workspacesCreated <- provisionWorkspacesWorkflow(boardDir, repoUrl, count)
   verification <- verifyWorkspacesReadyWorkflow(boardDir, count)
+  fs <- FileSystem.FileSystem
+  config = Schema.encodeSync(Schema.fromJsonString(RuntimeConfig))({ repository: repoUrl, originUrl: originUrl, baseBranch: baseBranch, provider: provider, devAgentCount: count })
+  _ <- fs.writeFileString(boardDir + "/.slopboss.json", config)
 
   isOk = verification.ok
   successMsg = "Board initialized successfully at " + boardDir + " with " + workspacesCreated.length + " workspaces created."
@@ -541,9 +571,9 @@ export initBoardStructureWorkflow = (boardDir: String, repoUrl: String = "", dev
   }
 }
 
-export initBoardStructure = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2) => effect {
-  res <- initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount) |> Effect.provide(BunServices.layer)
+export initBoardStructure = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => effect {
+  res <- initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount, originUrl, baseBranch, provider) |> Effect.provide(BunServices.layer)
   => res
 }
 
-export initBoardStructureSync = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2) => Effect.runSync(initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount) |> Effect.provide(SyncServices.layer))
+export initBoardStructureSync = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => Effect.runSync(initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount, originUrl, baseBranch, provider) |> Effect.provide(SyncServices.layer))

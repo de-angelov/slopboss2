@@ -76,18 +76,7 @@ readLanesAndStoreLogs = (boardDir: String) => {
           }
       })
 
-      archiveSections = store.archiveDoc.sections
-      archiveLogs = archiveSections |> Array.flatMap((sec: MarkdownSection) => {
-        tasks = sec.tasks
-        res = tasks |> Array.takeRight(3) |> Array.flatMap((t: TaskBlock) => {
-          when (t.id #= "") => []
-          => ["[MERGE TRAIN] Task " + t.id + " landed cleanly."]
-        })
-        => res
-      })
-
-      allLogs = Array.appendAll(laneLogs, archiveLogs)
-      => { lanes: lanes, logs: allLogs }
+      => { lanes: lanes, logs: laneLogs }
 }
 
 resolveTargetPath = (hasPrimary: Boolean, primary: String, alt: String): String => {
@@ -139,16 +128,10 @@ readRecentLogsWorkflow = (boardDir: String, initialLogs: Array<String>) => effec
 
 readRecentLogsSync = (boardDir: String, initialLogs: Array<String>): Array<String> => {
   logsFromFs = readRecentLogsWorkflow(boardDir, initialLogs) |> Effect.provide(BunServices.layer) |> Effect.catch((_) => Effect.succeed(initialLogs)) |> Effect.runSync
-  when (logsFromFs.length #= 0) => ["[SYSTEM] Live dashboard active. Waiting for orchestrator events..."]
   => logsFromFs
 }
 
 resolveLanes = (lanes: Array<AgentLane>): Array<AgentLane> => {
-  fallbackLanes = [
-    { id: "Dev Agent 1", status: "Idle", task: Option.none(), branch: Option.none() },
-    { id: "Dev Agent 2", status: "Idle", task: Option.none(), branch: Option.none() }
-  ]
-  when (lanes.length #= 0) => fallbackLanes
   => lanes
 }
 

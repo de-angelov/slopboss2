@@ -1,7 +1,7 @@
 import { Array, Console, Effect, Number, Option, Schema, String, Predicate } from "effect"
 import { runDoctor } from "../services/doctor.js"
 import { ReconcilerConfig, runReconcilerLoop } from "../orchestrator/dispatcher.js"
-import { initBoardStructure } from "../services/setup.js"
+import { initBoardStructure, readRuntimeConfig, readRuntimeConfigSync } from "../services/setup.js"
 import { buildInteractiveCommand } from "../services/provider.js"
 import { defaultLiveViewOptions, LiveViewOptions, runLiveView } from "./view.js"
 import { findTask, loadBoardStoreSync, updateTaskStatus } from "../domain/boardstore.js"
@@ -31,6 +31,9 @@ export schema CliInitCommand = {
   dir: String
   repoUrl: String
   agents: Number
+  originUrl?: String
+  baseBranch?: String
+  provider?: String
   help: Boolean
 }
 
@@ -277,6 +280,9 @@ schema RawParsedOptions = {
   pollIntervalMs: Option<Number>
   repoUrl: Option<String>
   agents: Option<Number>
+  originUrl: Option<String>
+  baseBranch: Option<String>
+  provider: Option<String>
   model: Option<String>
   positionals: Array<String>
   unknownOpt: Option<String>
@@ -290,6 +296,9 @@ emptyAcc = (): RawParsedOptions => {
   pollIntervalMs: Option.none(),
   repoUrl: Option.none(),
   agents: Option.none(),
+  originUrl: Option.none(),
+  baseBranch: Option.none(),
+  provider: Option.none(),
   model: Option.none(),
   positionals: [],
   unknownOpt: Option.none()
@@ -316,6 +325,9 @@ parseTokens = (subcommand: String, tokens: Array<String>, acc: RawParsedOptions)
   when (subcommand #= "run" and head #= "--detach") => parseTokens(subcommand, tail, { ...acc, detach: true })
   when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--repo" or head #= "-r")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
   when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--agents" or head #= "-a")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: agentCount })
+  when ((subcommand #= "init" or subcommand #= "setup") and head #= "--origin") => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, originUrl: tail |> Array.get(0) })
+  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--branch" or head #= "--base-branch")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, baseBranch: tail |> Array.get(0) })
+  when ((subcommand #= "init" or subcommand #= "setup") and head #= "--provider") => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, provider: tail |> Array.get(0) })
   when (subcommand #= "groom" and (head #= "--model" or head #= "-m")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
   when ((head #= "--help" or head #= "-h") and isDirCommand) => parseTokens(subcommand, tail, { ...acc, help: true })
   => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
@@ -395,7 +407,7 @@ export parseCliArgs = (argv?: Array<String>) => {
     help: parsed.help
   }
 
-  when (normCmd #= "init") => { command: "init", type: "init", dir: resolvedDir, repoUrl: repo, agents: agentCount, help: parsed.help }
+  when (normCmd #= "init") => { command: "init", type: "init", dir: resolvedDir, repoUrl: repo, agents: agentCount, originUrl: Option.getOrUndefined(parsed.originUrl), baseBranch: Option.getOrUndefined(parsed.baseBranch), provider: Option.getOrUndefined(parsed.provider), help: parsed.help }
 
   when (normCmd #= "groom") => { command: "groom", type: "groom", dir: resolvedDir, model: Option.getOrUndefined(parsed.model), help: parsed.help }
 
@@ -435,11 +447,25 @@ parseCoordinationCommand = (args: Array<String>) => {
 }
 
 export printStatus = (boardDir: String) => effect {
+  store = loadBoardStoreSync(boardDir)
+  lanes = store.tasksDoc.sections |> Array.map((section) => {
+    lane = section.name |> String.replace(RegExp("\\s+In Progress$", "i"), "")
+    task = section.tasks |> Array.findFirst((t) => t.status #= "In Progress")
+    match task
+      | Some(t) => lane + " -> [" + t.id + "] " + t.title + " (" + t.status + ")"
+      | None => lane + " -> Idle"
+  })
+  lockPath = boardDir + "/.slopboss-board.lock"
+  lockExists <- Effect.promise(() => Bun.file(lockPath).exists())
+  controller = match lockExists
+    | true => "Controller: lock present (PID/session evidence available in " + lockPath + ")"
+    | false => "Controller: missing (idle or stopped)"
+  cfg <- readRuntimeConfig(boardDir)
   _ <- Console.log("=== SLOPBOSS2 BOARD STATUS ===")
   _ <- Console.log("Board: " + boardDir)
-  _ <- Console.log("Lane 1: Dev Agent 1 -> [SB2-03] Live Process Runner (Completed)")
-  _ <- Console.log("Lane 2: Dev Agent 2 -> [SB2-05] Interactive Grooming CLI (In Progress)")
-  _ <- Console.log("Fleet: 2 dev agents active, provider agy.")
+  _ <- Console.log(lanes |> Array.join("\n"))
+  _ <- Console.log(controller)
+  _ <- Console.log("Fleet: " + cfg.devAgentCount + " dev agents configured, provider " + cfg.provider + ", base branch " + cfg.baseBranch + ".")
   => true
 }
 
@@ -552,12 +578,14 @@ runReconcilerForeground = (dir: String, rawOptsObj: Any, maxTicks?: Number, poll
 
   runnerOpt: Option<Any> = Option.fromNullishOr(Reflect.get(rawOptsObj, "runnerFn"))
 
+  persisted <- readRuntimeConfig(dir)
   config: ReconcilerConfig = {
     boardDir: dir,
     pollIntervalMs: pollVal,
     maxIterations: iterVal,
-    devAgentCount: 2,
-    baseBranch: Option.none(),
+    devAgentCount: persisted.devAgentCount,
+    baseBranch: Option.some(persisted.baseBranch),
+    provider: Option.some(persisted.provider),
     mockRunner: mockOpt,
     runnerFn: runnerOpt,
     mergeQueue: Option.none()
@@ -573,12 +601,14 @@ export runReconcilerCommand = (dir: String, detach: Boolean = false, options?: A
   => runReconcilerForeground(dir, rawOptsObj, maxTicks, pollIntervalMs)
 }
 
-export runInitCommand = (dir: String, repoUrl: String = "https://github.com/de-angelov/slopboss2.git", agents: Number = 2) => effect {
+export runInitCommand = (dir: String, repoUrl: String = "https://github.com/de-angelov/slopboss2.git", agents: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => effect {
   _ <- Console.log("=== SLOPBOSS2 INIT ===")
   _ <- Console.log("Board directory: " + dir)
   _ <- Console.log("Repository URL:  " + repoUrl)
   _ <- Console.log("Dev Agents:      " + agents)
-  res <- initBoardStructure(dir, repoUrl, agents)
+  when (agents < 1) => Effect.fail(CliCommandError({ message: "--agents must be a positive number" }))
+  when (provider #! "agy" and provider #! "gemini") => Effect.fail(CliCommandError({ message: "--provider must be agy or gemini" }))
+  res <- initBoardStructure(dir, repoUrl, agents, originUrl, baseBranch, provider)
   _ <- Console.log("Initialization complete. Workspaces and board ready.")
   => res
 }
@@ -605,6 +635,7 @@ export runControlLoop = (boardDir: String, maxTicks: Number = 3) => effect {
     maxIterations: maxTicks,
     devAgentCount: 2,
     baseBranch: Option.none(),
+    provider: Option.none(),
     mockRunner: Option.none(),
     runnerFn: Option.none(),
     mergeQueue: Option.none()
@@ -678,6 +709,9 @@ export dispatchCli = (cmd: Any, options?: Any) => {
   pollOpt = Option.fromNullishOr(Reflect.get(obj, "pollIntervalMs")) |> Option.flatMap((p) => Number.parse("" + p))
   repoStr = Option.fromNullishOr(Reflect.get(obj, "repoUrl")) |> Option.map((r) => "" + r) |> Option.getOrElse(() => "https://github.com/de-angelov/slopboss2.git")
   agentsNum = Option.fromNullishOr(Reflect.get(obj, "agents")) |> Option.flatMap((a) => Number.parse("" + a)) |> Option.getOrElse(() => 2)
+  originUrl = Option.fromNullishOr(Reflect.get(obj, "originUrl")) |> Option.map((v) => "" + v) |> Option.getOrElse(() => "")
+  baseBranch = Option.fromNullishOr(Reflect.get(obj, "baseBranch")) |> Option.map((v) => "" + v) |> Option.getOrElse(() => "main")
+  provider = Option.fromNullishOr(Reflect.get(obj, "provider")) |> Option.map((v) => "" + v) |> Option.getOrElse(() => "agy")
 
   when (dispatchAction #= "board") => dispatchBoardCommand(obj, dirStr)
   when (dispatchAction #= "recover") => acquireBoardLock(dirStr).pipe(Effect.scoped)
@@ -687,7 +721,7 @@ export dispatchCli = (cmd: Any, options?: Any) => {
   when (dispatchAction #= "invalid") => handleInvalid(cmd)
   when (dispatchAction #= "doctor") => runDoctorCommand(dirStr)
   when (dispatchAction #= "run") => runReconcilerCommand(dirStr, rawDetach, rawOptions, Option.getOrUndefined(maxTicksOpt), Option.getOrUndefined(pollOpt))
-  when (dispatchAction #= "init") => runInitCommand(dirStr, repoStr, agentsNum)
+  when (dispatchAction #= "init") => runInitCommand(dirStr, repoStr, agentsNum, originUrl, baseBranch, provider)
   when (dispatchAction #= "groom") => runGroomCommand(dirStr, Option.getOrUndefined(modelOpt), rawOptions)
   when (dispatchAction #= "status") => printStatus(dirStr)
   when (dispatchAction #= "view") => runViewCommandWithOpts(cmd, Option.getOrUndefined(Option.fromNullishOr(rawOptions)))
