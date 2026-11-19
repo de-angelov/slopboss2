@@ -71,6 +71,15 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
     taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Landing commit failed; recovery workspace: " + tempDir + ". " + messageOf(commitRes))
   }
   hashRes = git(["rev-parse", "HEAD"], tempDir)
+  latestBaseRes = git(["fetch", "origin", baseBranch], tempDir)
+  when (not (latestBaseRes.exitCode #= 0)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Cannot refresh base before push; recovery commit " + hashRes.stdout + " retained at " + tempDir + ". " + messageOf(latestBaseRes))
+  }
+  baseHeadRes = git(["rev-parse", "refs/remotes/origin/" + baseBranch], tempDir)
+  parentRes = git(["rev-parse", "HEAD^"], tempDir)
+  when (not (baseHeadRes.exitCode #= 0) or not (parentRes.exitCode #= 0) or not (baseHeadRes.stdout #= parentRes.stdout)) => {
+    taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Base advanced during landing; recovery commit " + hashRes.stdout + " retained at " + tempDir)
+  }
   pushRes = git(["push", "origin", "HEAD:refs/heads/" + baseBranch], tempDir)
   when (not (pushRes.exitCode #= 0)) => {
     taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Push failed; recovery commit " + hashRes.stdout + " retained at " + tempDir + ". " + messageOf(pushRes))
