@@ -60,14 +60,14 @@ export defaultRuntimeConfig = (): RuntimeConfig => ({
 
 readRuntimeConfigWorkflow = (boardDir: String) => effect {
   fs <- FileSystem.FileSystem
-  raw <- fs.readFileString(boardDir + "/.slopboss.json") |> Effect.option
+  raw <- fs.readFileString(boardDir + "/.slopboss.json") |> option
   parsed = Option.flatMap(raw, (s) => Schema.decodeUnknownOption(Schema.fromJsonString(RuntimeConfig))(s))
   => Option.getOrElse(parsed, defaultRuntimeConfig)
 }
 
-export readRuntimeConfig = (boardDir: String) => readRuntimeConfigWorkflow(boardDir) |> Effect.provide(BunServices.layer)
+export readRuntimeConfig = (boardDir: String) => readRuntimeConfigWorkflow(boardDir) |> provide(BunServices.layer)
 
-export readRuntimeConfigSync = (boardDir: String): RuntimeConfig => Effect.runSync(readRuntimeConfigWorkflow(boardDir) |> Effect.provide(SyncServices.layer))
+export readRuntimeConfigSync = (boardDir: String): RuntimeConfig => Effect.runSync(readRuntimeConfigWorkflow(boardDir) |> provide(SyncServices.layer))
 
 export schema GitCommandResult = {
   exitCode: Number
@@ -80,7 +80,7 @@ export runGitCommand = (args: Array<String>, cwd: String = "") => runGitCommandS
 export generateTasksMarkdown = (devAgentCount: Number = 2) =>
   count = Math.max(1, devAgentCount)
   header = "# TASKS\n\nActive work board for slopboss2.\n\n"
-  lanes = Array.range(1, count) |> Array.map((i) => "## Dev Agent " + i + " In Progress\n\n") |> Array.join("")
+  lanes = Array.range(1, count) |> map((i) => "## Dev Agent " + i + " In Progress\n\n") |> join("")
   => header + lanes
 
 export generateBacklogMarkdown = () => "# BACKLOG\n\nPending unassigned work for slopboss2.\n"
@@ -124,11 +124,11 @@ export scaffoldBoardMarkdownWorkflow = (boardDir: String, devAgentCount: Number 
 }
 
 export scaffoldBoardMarkdown = (boardDir: String, devAgentCount: Number = 2) => effect {
-  res <- scaffoldBoardMarkdownWorkflow(boardDir, devAgentCount) |> Effect.provide(BunServices.layer)
+  res <- scaffoldBoardMarkdownWorkflow(boardDir, devAgentCount) |> provide(BunServices.layer)
   => res
 }
 
-export scaffoldBoardMarkdownSync = (boardDir: String, devAgentCount: Number = 2) => Effect.runSync(scaffoldBoardMarkdownWorkflow(boardDir, devAgentCount) |> Effect.provide(SyncServices.layer))
+export scaffoldBoardMarkdownSync = (boardDir: String, devAgentCount: Number = 2) => Effect.runSync(scaffoldBoardMarkdownWorkflow(boardDir, devAgentCount) |> provide(SyncServices.layer))
 
 export checkoutMainBranch = (wsPath: String) =>
   hasMain = runGitCommand(["rev-parse", "--verify", "main"], wsPath)
@@ -231,7 +231,7 @@ export createWorktreeWorkspaceWorkflow = (baseRepoPath: String, worktreePath: St
   }
 }
 
-export createWorktreeWorkspaceSync = (baseRepoPath: String, worktreePath: String, branch: String = "main") => Effect.runSync(createWorktreeWorkspaceWorkflow(baseRepoPath, worktreePath, branch) |> Effect.provide(SyncServices.layer))
+export createWorktreeWorkspaceSync = (baseRepoPath: String, worktreePath: String, branch: String = "main") => Effect.runSync(createWorktreeWorkspaceWorkflow(baseRepoPath, worktreePath, branch) |> provide(SyncServices.layer))
 
 export initWorkspaceRepoWorkflow = (wsPath: String, repoUrl: String = "", fallbackBaseRepo: String = "") => effect {
   fs <- FileSystem.FileSystem
@@ -355,7 +355,7 @@ export initWorkspaceRepoWorkflow = (wsPath: String, repoUrl: String = "", fallba
   }
 }
 
-export initWorkspaceRepoSync = (wsPath: String, repoUrl: String = "", fallbackBaseRepo: String = "") => Effect.runSync(initWorkspaceRepoWorkflow(wsPath, repoUrl, fallbackBaseRepo) |> Effect.provide(SyncServices.layer))
+export initWorkspaceRepoSync = (wsPath: String, repoUrl: String = "", fallbackBaseRepo: String = "") => Effect.runSync(initWorkspaceRepoWorkflow(wsPath, repoUrl, fallbackBaseRepo) |> provide(SyncServices.layer))
 
 export provisionWorkspacesWorkflow = (boardDir: String, repoUrl: String, devAgentCount: Number = 2) => effect {
   fs <- FileSystem.FileSystem
@@ -386,16 +386,16 @@ export provisionWorkspacesWorkflow = (boardDir: String, repoUrl: String, devAgen
     => Option.none()
   })
 
-  created = tlCreated |> Array.appendAll(agentResults |> Array.getSomes)
+  created = tlCreated |> appendAll(agentResults |> Array.getSomes)
   => created
 }
 
 export provisionWorkspaces = (boardDir: String, repoUrl: String, devAgentCount: Number = 2) => effect {
-  res <- provisionWorkspacesWorkflow(boardDir, repoUrl, devAgentCount) |> Effect.provide(BunServices.layer)
+  res <- provisionWorkspacesWorkflow(boardDir, repoUrl, devAgentCount) |> provide(BunServices.layer)
   => res
 }
 
-export provisionWorkspacesSync = (boardDir: String, repoUrl: String, devAgentCount: Number = 2) => Effect.runSync(provisionWorkspacesWorkflow(boardDir, repoUrl, devAgentCount) |> Effect.provide(SyncServices.layer))
+export provisionWorkspacesSync = (boardDir: String, repoUrl: String, devAgentCount: Number = 2) => Effect.runSync(provisionWorkspacesWorkflow(boardDir, repoUrl, devAgentCount) |> provide(SyncServices.layer))
 
 export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number = 2) => effect {
   fs <- FileSystem.FileSystem
@@ -448,8 +448,8 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
     message: "Workspaces directory does not exist: " + workspacesDir
   }
 
-  agentNames = Array.range(1, count) |> Array.map((i) => "repo-agent-" + i)
-  workspaceNames = ["repo-tl"] |> Array.appendAll(agentNames)
+  agentNames = Array.range(1, count) |> map((i) => "repo-agent-" + i)
+  workspaceNames = ["repo-tl"] |> appendAll(agentNames)
 
   checkResults <- workspaceNames |> Effect.forEach((name) => effect {
     wsPath = path.join(workspacesDir, name)
@@ -500,7 +500,7 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
       | true => [name + " has uncommitted changes"]
       | false => []
 
-    allFails = branchFail |> Array.appendAll(cleanFail)
+    allFails = branchFail |> appendAll(cleanFail)
 
     => {
       info: {
@@ -537,11 +537,11 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
 }
 
 export verifyWorkspacesReady = (boardDir: String, devAgentCount: Number = 2) => effect {
-  res <- verifyWorkspacesReadyWorkflow(boardDir, devAgentCount) |> Effect.provide(BunServices.layer)
+  res <- verifyWorkspacesReadyWorkflow(boardDir, devAgentCount) |> provide(BunServices.layer)
   => res
 }
 
-export verifyWorkspacesReadySync = (boardDir: String, devAgentCount: Number = 2) => Effect.runSync(verifyWorkspacesReadyWorkflow(boardDir, devAgentCount) |> Effect.provide(SyncServices.layer))
+export verifyWorkspacesReadySync = (boardDir: String, devAgentCount: Number = 2) => Effect.runSync(verifyWorkspacesReadyWorkflow(boardDir, devAgentCount) |> provide(SyncServices.layer))
 
 export initBoardStructureWorkflow = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => effect {
   count = Math.max(1, devAgentCount)
@@ -572,8 +572,8 @@ export initBoardStructureWorkflow = (boardDir: String, repoUrl: String = "", dev
 }
 
 export initBoardStructure = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => effect {
-  res <- initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount, originUrl, baseBranch, provider) |> Effect.provide(BunServices.layer)
+  res <- initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount, originUrl, baseBranch, provider) |> provide(BunServices.layer)
   => res
 }
 
-export initBoardStructureSync = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => Effect.runSync(initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount, originUrl, baseBranch, provider) |> Effect.provide(SyncServices.layer))
+export initBoardStructureSync = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => Effect.runSync(initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount, originUrl, baseBranch, provider) |> provide(SyncServices.layer))

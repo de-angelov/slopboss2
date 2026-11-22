@@ -22,11 +22,11 @@ export schema Board = {
 
 // Parses Markdown bullet tasks
 export parseTaskLine = (line: String) =>
-  trimmed = line |> String.trim
+  trimmed = line |> trim
   nowMs = DateTime.toEpochMillis(DateTime.nowUnsafe())
   parsed = match trimmed
-    | t when t |> String.startsWith("- [x]") =>
-      body = t |> String.substring(5) |> String.trim
+    | t when t |> startsWith("- [x]") =>
+      body = t |> substring(5) |> trim
       {
         id: "TASK-" + nowMs,
         title: body,
@@ -36,8 +36,8 @@ export parseTaskLine = (line: String) =>
         branch: Option.none(),
         dependsOn: []
       }
-    | t when t |> String.startsWith("- [/]") =>
-      body = t |> String.substring(5) |> String.trim
+    | t when t |> startsWith("- [/]") =>
+      body = t |> substring(5) |> trim
       {
         id: "TASK-" + nowMs,
         title: body,
@@ -47,8 +47,8 @@ export parseTaskLine = (line: String) =>
         branch: Option.none(),
         dependsOn: []
       }
-    | t when t |> String.startsWith("- [ ]") =>
-      body = t |> String.substring(5) |> String.trim
+    | t when t |> startsWith("- [ ]") =>
+      body = t |> substring(5) |> trim
       {
         id: "TASK-" + nowMs,
         title: body,

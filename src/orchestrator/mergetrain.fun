@@ -18,7 +18,7 @@ export schema MergeResult = {
 
 git = (args: Array<String>, cwd: String) => runGitCommandSync(args, cwd)
 messageOf = (result: GitSubprocessResult) => {
-  => match result.stderr |> String.isEmpty
+  => match result.stderr |> isEmpty
     | true => result.stdout
     | false => result.stderr
 }
@@ -44,7 +44,7 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
   }
   remote = remoteRes.stdout
   tempRes = Bun.spawnSync(["mktemp", "-d"], { stdout: "pipe", stderr: "pipe" })
-  tempDir = tempRes.stdout.toString() |> String.trim
+  tempDir = tempRes.stdout.toString() |> trim
   cloneRes = git(["clone", "--quiet", remote, tempDir], req.workspace)
   when (not (cloneRes.exitCode #= 0)) => {
     taskId: req.taskId, success: false, commitHash: Option.none(), error: Option.some("Cannot create isolated landing repository: " + messageOf(cloneRes))
@@ -63,7 +63,7 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
   // evidence that this request already landed, so retrying is idempotent.
   landedRes = git(["log", "refs/remotes/origin/" + baseBranch, "--format=%H", "--grep=^" + req.taskId + ": landed$"], tempDir)
   when (landedRes.exitCode #= 0 and not (landedRes.stdout |> String.trim |> String.isEmpty)) => {
-    taskId: req.taskId, success: true, commitHash: Option.some(landedRes.stdout |> String.trim |> String.split("\n") |> Array.head |> Option.getOrElse(() => "")), error: Option.none()
+    taskId: req.taskId, success: true, commitHash: Option.some(landedRes.stdout |> trim |> split("\n") |> head |> getOrElse(() => "")), error: Option.none()
   }
   checkoutRes = git(["checkout", "--quiet", "-B", baseBranch, "refs/remotes/origin/" + baseBranch], tempDir)
   when (not (checkoutRes.exitCode #= 0)) => {

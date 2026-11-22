@@ -61,7 +61,7 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
 
 export runConfiguredAgentSession = (prompt: String, cwd: String, provider: String = "agy") => {
   command = buildAgyCommand(Option.none())
-  selected = [provider] |> Array.appendAll(command |> Array.drop(1))
+  selected = [provider] |> appendAll(command |> Array.drop(1))
   => runAgentSession(selected, cwd, Option.some(prompt))
 }
 

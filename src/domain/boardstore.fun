@@ -37,12 +37,12 @@ export schema BoardStore = {
 }
 
 BunFileSystem = FileSystem.makeNoop({
-  exists: (p: String) => Effect.try(() => fs.existsSync(p)) |> Effect.orDie,
-  readFileString: (p: String) => Effect.try(() => fs.readFileSync(p, "utf-8")) |> Effect.orDie,
-  writeFileString: (p: String, data: String) => Effect.try(() => fs.writeFileSync(p, data, "utf-8")) |> Effect.asVoid |> Effect.orDie,
-  makeDirectory: (p: String) => Effect.try(() => fs.mkdirSync(p, { recursive: true })) |> Effect.asVoid |> Effect.orDie,
-  rename: (oldP: String, newP: String) => Effect.try(() => fs.renameSync(oldP, newP)) |> Effect.asVoid |> Effect.orDie,
-  remove: (p: String) => Effect.try(() => fs.rmSync(p, { recursive: true, force: true })) |> Effect.asVoid |> Effect.orDie
+  exists: (p: String) => Effect.try(() => fs.existsSync(p)) |> orDie,
+  readFileString: (p: String) => Effect.try(() => fs.readFileSync(p, "utf-8")) |> orDie,
+  writeFileString: (p: String, data: String) => Effect.try(() => fs.writeFileSync(p, data, "utf-8")) |> asVoid |> orDie,
+  makeDirectory: (p: String) => Effect.try(() => fs.mkdirSync(p, { recursive: true })) |> asVoid |> orDie,
+  rename: (oldP: String, newP: String) => Effect.try(() => fs.renameSync(oldP, newP)) |> asVoid |> orDie,
+  remove: (p: String) => Effect.try(() => fs.rmSync(p, { recursive: true, force: true })) |> asVoid |> orDie
 })
 
 export BunServices = {
@@ -51,7 +51,7 @@ export BunServices = {
 
 assignStore = (target: Any, source: Any) => {
   keys: Array<String> = Record.keys(source)
-  _ = keys |> Array.map((k) => {
+  _ = keys |> map((k) => {
     v: Unknown = Reflect.get(source, k)
     _ = Reflect.set(target, k, v)
     => true
@@ -71,15 +71,15 @@ export atomicWriteFileEffect = (filePath: String, content: String) => effect {
   => true
 }
 
-export atomicWriteFile = (filePath: String, content: String) => atomicWriteFileEffect(filePath, content) |> Effect.provide(BunServices.layer)
+export atomicWriteFile = (filePath: String, content: String) => atomicWriteFileEffect(filePath, content) |> provide(BunServices.layer)
 
 export atomicWriteFileSync = (filePath: String, content: String) => {
-  dir = filePath |> String.split("/") |> Array.dropRight(1) |> Array.join("/")
+  dir = filePath |> split("/") |> dropRight(1) |> join("/")
   dirSafe = match (dir #= "")
     | true => "."
     | false => dir
   fs.mkdirSync(dirSafe, { recursive: true })
-  base = filePath |> String.split("/") |> Array.last |> Option.getOrElse(() => "file")
+  base = filePath |> split("/") |> last |> getOrElse(() => "file")
   tempPath = dirSafe + "/." + base + ".tmp." + process.pid + "." + DateTime.toEpochMillis(DateTime.nowUnsafe())
   fs.writeFileSync(tempPath, content, "utf-8")
   fs.renameSync(tempPath, filePath)
@@ -101,7 +101,7 @@ schema TaskBlockParseState = {
 }
 
 export parseTaskBlockText = (rawBlock: String): TaskBlock => {
-  lines = rawBlock |> String.replaceAll("\r", "") |> String.split("\n")
+  lines = rawBlock |> replaceAll("\r", "") |> split("\n")
   initialState: TaskBlockParseState = {
     title: "",
     id: "",
@@ -120,33 +120,33 @@ export parseTaskBlockText = (rawBlock: String): TaskBlock => {
   splitRx = RegExp("\\s+", "g")
 
   finalState = lines |> Array.reduce(initialState, (state, line) => {
-    trimmed = line |> String.trim
-    lowerTrimmed = trimmed |> String.toLowerCase
-    colonIndexOpt = trimmed |> String.indexOf(":")
+    trimmed = line |> trim
+    lowerTrimmed = trimmed |> toLowerCase
+    colonIndexOpt = trimmed |> indexOf(":")
     afterColon = match colonIndexOpt
-      | Some(i) => trimmed |> String.substring(i + 1) |> String.trim
+      | Some(i) => trimmed |> substring(i + 1) |> trim
       | None => ""
 
     isOther = (lowerTrimmed |> String.startsWith("blocking tasks:")) or (lowerTrimmed |> String.startsWith("completed:")) or (lowerTrimmed |> String.startsWith("blocked by:")) or (lowerTrimmed |> String.startsWith("progress notes:")) or (lowerTrimmed |> String.startsWith("verification evidence:"))
 
-    t = trimmed |> String.substring(3) |> String.trim
-    deps = afterColon |> String.split(",") |> Array.map((d: String) => d |> String.trim |> String.replace(cleanRx, "")) |> Array.filter((d: String) => d #! "")
+    t = trimmed |> substring(3) |> trim
+    deps = afterColon |> split(",") |> map((d: String) => d |> trim |> replace(cleanRx, "")) |> filter((d: String) => d #! "")
     linesValue = match (afterColon #= "")
       | true => []
       | false => [afterColon]
     normalizedDeps = match ((afterColon |> String.toLowerCase) #= "none" or afterColon #= "")
       | true => []
       | false => deps
-    when (trimmed |> String.startsWith("###")) => { ...state, title: t }
-    when (lowerTrimmed |> String.startsWith("task id:")) => { ...state, id: afterColon, currentSection: "none" }
-    when (lowerTrimmed |> String.startsWith("category:")) => { ...state, category: afterColon, currentSection: "none" }
-    when (lowerTrimmed |> String.startsWith("owner:")) => { ...state, owner: afterColon, currentSection: "none" }
-    when (lowerTrimmed |> String.startsWith("branch:")) => { ...state, branch: afterColon, currentSection: "none" }
-    when (lowerTrimmed |> String.startsWith("status:")) => { ...state, status: afterColon, currentSection: "none" }
-    when (lowerTrimmed |> String.startsWith("dependencies:")) => { ...state, dependencies: normalizedDeps, currentSection: "none" }
-    when (lowerTrimmed |> String.startsWith("objective:")) => { ...state, objectiveLines: linesValue, currentSection: "objective" }
-    when (lowerTrimmed |> String.startsWith("scope:")) => { ...state, scopeLines: linesValue, currentSection: "scope" }
-    when (lowerTrimmed |> String.startsWith("acceptance criteria:")) => { ...state, acceptanceLines: linesValue, currentSection: "acceptance" }
+    when (trimmed |> startsWith("###")) => { ...state, title: t }
+    when (lowerTrimmed |> startsWith("task id:")) => { ...state, id: afterColon, currentSection: "none" }
+    when (lowerTrimmed |> startsWith("category:")) => { ...state, category: afterColon, currentSection: "none" }
+    when (lowerTrimmed |> startsWith("owner:")) => { ...state, owner: afterColon, currentSection: "none" }
+    when (lowerTrimmed |> startsWith("branch:")) => { ...state, branch: afterColon, currentSection: "none" }
+    when (lowerTrimmed |> startsWith("status:")) => { ...state, status: afterColon, currentSection: "none" }
+    when (lowerTrimmed |> startsWith("dependencies:")) => { ...state, dependencies: normalizedDeps, currentSection: "none" }
+    when (lowerTrimmed |> startsWith("objective:")) => { ...state, objectiveLines: linesValue, currentSection: "objective" }
+    when (lowerTrimmed |> startsWith("scope:")) => { ...state, scopeLines: linesValue, currentSection: "scope" }
+    when (lowerTrimmed |> startsWith("acceptance criteria:")) => { ...state, acceptanceLines: linesValue, currentSection: "acceptance" }
     when isOther => { ...state, currentSection: "other" }
     when (state.currentSection #= "objective") => { ...state, objectiveLines: state.objectiveLines |> Array.append(line) }
     when (state.currentSection #= "scope") => { ...state, scopeLines: state.scopeLines |> Array.append(line) }
@@ -155,7 +155,7 @@ export parseTaskBlockText = (rawBlock: String): TaskBlock => {
   })
 
   computedId = match (finalState.id #= "" and finalState.title #! "")
-    | true => finalState.title |> String.replace(splitRx, "-") |> String.toUpperCase
+    | true => finalState.title |> String.replace(splitRx, "-") |> toUpperCase
     | false => finalState.id
 
   computedStatus = match (finalState.status #= "")
@@ -170,10 +170,10 @@ export parseTaskBlockText = (rawBlock: String): TaskBlock => {
     branch: finalState.branch,
     status: computedStatus,
     dependencies: finalState.dependencies,
-    objective: finalState.objectiveLines |> Array.join("\n") |> String.trim,
-    scope: finalState.scopeLines |> Array.join("\n") |> String.trim,
-    acceptanceCriteria: finalState.acceptanceLines |> Array.join("\n") |> String.trim,
-    rawBody: rawBlock |> String.trim
+    objective: finalState.objectiveLines |> Array.join("\n") |> trim,
+    scope: finalState.scopeLines |> Array.join("\n") |> trim,
+    acceptanceCriteria: finalState.acceptanceLines |> Array.join("\n") |> trim,
+    rawBody: rawBlock |> trim
   }
 }
 
@@ -190,11 +190,11 @@ parseSectionLines = (title: String, lines: Array<String>): MarkdownSection => {
     currentTaskLines: Option.none()
   }
 
-  reduced = lines |> Array.reduce(initialState, (state, line) => {
-    trimmed = line |> String.trim
+  reduced = lines |> reduce(initialState, (state, line) => {
+    trimmed = line |> trim
     currentLines = state.currentTaskLines |> Option.getOrElse(() => [])
     hasCurrentTask = Option.isSome(state.currentTaskLines)
-    isTaskHeader = trimmed |> String.startsWith("### ")
+    isTaskHeader = trimmed |> startsWith("### ")
     flushedTasks = state.tasks |> Array.appendAll(
       state.currentTaskLines |> Option.map((taskLines) => [parseTaskBlockText(taskLines |> Array.join("\n"))]) |> Option.getOrElse(() => [])
     )
@@ -207,7 +207,7 @@ parseSectionLines = (title: String, lines: Array<String>): MarkdownSection => {
     reduced.currentTaskLines |> Option.map((tLines) => [parseTaskBlockText(tLines |> Array.join("\n"))]) |> Option.getOrElse(() => [])
   )
 
-  rawContent = reduced.nonTaskLines |> Array.join("\n") |> String.trim
+  rawContent = reduced.nonTaskLines |> Array.join("\n") |> trim
 
   => {
     title: title,
@@ -226,7 +226,7 @@ schema DocParseState = {
 }
 
 export parseTasksDocument = (content: String): TasksDocument => {
-  lines = content |> String.replaceAll("\r", "") |> String.split("\n")
+  lines = content |> replaceAll("\r", "") |> split("\n")
   initialState: DocParseState = {
     seenFirstSection: false,
     headerLines: [],
@@ -236,9 +236,9 @@ export parseTasksDocument = (content: String): TasksDocument => {
   }
 
   reduced = lines |> Array.reduce(initialState, (state, line) => {
-    trimmed = line |> String.trim
+    trimmed = line |> trim
     isSectionHeader = (trimmed |> String.startsWith("## ")) and not (trimmed |> String.startsWith("### "))
-    secTitle = trimmed |> String.substring(2) |> String.trim
+    secTitle = trimmed |> substring(2) |> trim
     flushedSec = parseSectionLines(state.currentSectionTitle, state.currentSectionLines)
     when (isSectionHeader and not state.seenFirstSection) => { ...state, seenFirstSection: true, currentSectionTitle: secTitle, currentSectionLines: [] }
     when isSectionHeader => { ...state, sections: state.sections |> Array.append(flushedSec), currentSectionTitle: secTitle, currentSectionLines: [] }
@@ -251,7 +251,7 @@ export parseTasksDocument = (content: String): TasksDocument => {
     | true => reduced.sections |> Array.append(lastSec)
     | false => reduced.sections
 
-  header = reduced.headerLines |> Array.join("\n") |> String.trim
+  header = reduced.headerLines |> Array.join("\n") |> trim
 
   => {
     header: header,
@@ -264,7 +264,7 @@ export parseArchiveDocument = (content: String): TasksDocument => parseTasksDocu
 
 export parseBacklogTasks = (content: String): Array<TaskBlock> => {
   when (content #= "") => []
-  lines = content |> String.replaceAll("\r", "") |> String.split("\n")
+  lines = content |> replaceAll("\r", "") |> split("\n")
 
   initialState: SectionParseState = {
     tasks: [],
@@ -273,8 +273,8 @@ export parseBacklogTasks = (content: String): Array<TaskBlock> => {
   }
 
   reduced = lines |> Array.reduce(initialState, (state, line) => {
-    trimmed = line |> String.trim
-    isTaskHeader = trimmed |> String.startsWith("### ")
+    trimmed = line |> trim
+    isTaskHeader = trimmed |> startsWith("### ")
     flushedTasks = state.tasks |> Array.appendAll(state.currentTaskLines |> Option.map((taskLines) => [parseTaskBlockText(taskLines |> Array.join("\n"))]) |> Option.getOrElse(() => []))
     currentLines = state.currentTaskLines |> Option.getOrElse(() => [])
     when isTaskHeader => { ...state, tasks: flushedTasks, currentTaskLines: Option.some([line]) }
@@ -288,15 +288,15 @@ export parseBacklogTasks = (content: String): Array<TaskBlock> => {
 }
 
 export formatTaskBlock = (task: TaskBlock): String => {
-  trimmedRaw = task.rawBody |> String.trim
+  trimmedRaw = task.rawBody |> trim
   statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
   ownerRx = RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
   branchRx = RegExp("(^|\\n)Branch:\\s*[^\\n]+", "g")
 
-  b1 = trimmedRaw |> String.replace(statusRx, "$1Status: " + task.status)
+  b1 = trimmedRaw |> replace(statusRx, "$1Status: " + task.status)
   b2 = match (task.owner #! "") | true => b1 |> String.replace(ownerRx, "$1Owner: " + task.owner) | false => b1
   b3 = match (task.branch #! "") | true => b2 |> String.replace(branchRx, "$1Branch: " + task.branch) | false => b2
-  depsStr = match (task.dependencies.length > 0) | true => task.dependencies |> Array.join(", ") | false => "none"
+  depsStr = match (task.dependencies.length > 0) | true => task.dependencies |> join(", ") | false => "none"
   titleStr = match (task.title #! "") | true => task.title | false => task.id
   catStr = match (task.category #! "") | true => task.category | false => "Core Service"
   ownerStr = match (task.owner #! "") | true => task.owner | false => "Unassigned"
@@ -314,15 +314,15 @@ export formatTaskBlock = (task: TaskBlock): String => {
           "Blocking tasks: none"
         ]
 
-  p1 = match (task.objective #! "") | true => baseParts |> Array.appendAll(["", "Objective:", task.objective]) | false => baseParts
-  p2 = match (task.scope #! "") | true => p1 |> Array.appendAll(["", "Scope:", task.scope]) | false => p1
-  p3 = match (task.acceptanceCriteria #! "") | true => p2 |> Array.appendAll(["", "Acceptance Criteria:", task.acceptanceCriteria]) | false => p2
-  generated = p3 |> Array.join("\n")
+  p1 = match (task.objective #! "") | true => baseParts |> appendAll(["", "Objective:", task.objective]) | false => baseParts
+  p2 = match (task.scope #! "") | true => p1 |> appendAll(["", "Scope:", task.scope]) | false => p1
+  p3 = match (task.acceptanceCriteria #! "") | true => p2 |> appendAll(["", "Acceptance Criteria:", task.acceptanceCriteria]) | false => p2
+  generated = p3 |> join("\n")
   => match (trimmedRaw #! "") | true => b3 | false => generated
 }
 
 formatSection = (section: MarkdownSection): String => {
-  raw = section.rawContent |> String.trim
+  raw = section.rawContent |> trim
   emptyTasksPart = match (raw #! "") | true => raw + "\n" | false => "*Idle - Ready for next backlog assignment.*\n"
   tasksPart = match (section.tasks.length > 0)
     | true => (section.tasks |> Array.map(formatTaskBlock) |> Array.join("\n\n")) + "\n"
@@ -335,7 +335,7 @@ formatSectionsOnly = (sections: Array<MarkdownSection>, maybeHeader: Option<Stri
   header = match maybeHeader
     | Some(h) => h
     | None => headerDefault
-  sectionsPart = sections |> Array.map(formatSection) |> Array.join("\n")
+  sectionsPart = sections |> map(formatSection) |> join("\n")
   => (header |> String.trim) + "\n\n" + sectionsPart
 }
 
@@ -345,7 +345,7 @@ formatDocumentOnly = (doc: TasksDocument): String => {
     | true => doc.header
     | false => headerDefault
   sections = chooseDocumentSections(doc)
-  sectionsPart = sections |> Array.map(formatSection) |> Array.join("\n")
+  sectionsPart = sections |> map(formatSection) |> join("\n")
   => (header |> String.trim) + "\n\n" + sectionsPart
 }
 
@@ -358,7 +358,7 @@ export formatTasksDocument = (docOrSections: Any, maybeHeader?: String): String 
 }
 
 export formatArchiveDocument = (doc: TasksDocument, summaryBullets?: String): String => {
-  header = summaryBullets |> Option.map((b: String) => b |> String.trim) |> Option.filter((b: String) => b #! "") |> Option.getOrElse(() => doc.header)
+  header = summaryBullets |> map((b: String) => b |> trim) |> filter((b: String) => b #! "") |> getOrElse(() => doc.header)
   => formatTasksDocument(doc, header)
 }
 
@@ -368,14 +368,14 @@ chooseDocumentSections = (doc: TasksDocument): Array<MarkdownSection> => {
   => []
 }
 
-findTaskInTasksDocument = (doc: TasksDocument, taskId: String): Option.Option<TaskBlock> => doc.sections |> Array.findFirst((sec: MarkdownSection) => sec.tasks |> Array.some((t: TaskBlock) => t.id #= taskId)) |> Option.flatMap((sec: MarkdownSection) => sec.tasks |> Array.findFirst((t: TaskBlock) => t.id #= taskId))
+findTaskInTasksDocument = (doc: TasksDocument, taskId: String): Option.Option<TaskBlock> => doc.sections |> findFirst((sec: MarkdownSection) => sec.tasks |> Array.some((t: TaskBlock) => t.id #= taskId)) |> flatMap((sec: MarkdownSection) => sec.tasks |> findFirst((t: TaskBlock) => t.id #= taskId))
 
 findTaskInBoardStore = (store: BoardStore, taskId: String): Option.Option<TaskBlock> => {
   inTasks = findTaskInTasksDocument(store.tasksDoc, taskId)
   inArchive = match Boolean(store.archiveDoc) | true => findTaskInTasksDocument(store.archiveDoc, taskId) | false => Option.none()
   backlogTasks = match (store.backlogContent #! "") | true => parseBacklogTasks(store.backlogContent) | false => []
-  inBacklog = backlogTasks |> Array.findFirst((t: TaskBlock) => t.id #= taskId)
-  => inTasks |> Option.orElse(() => inArchive) |> Option.orElse(() => inBacklog)
+  inBacklog = backlogTasks |> findFirst((t: TaskBlock) => t.id #= taskId)
+  => inTasks |> orElse(() => inArchive) |> orElse(() => inBacklog)
 }
 
 export findTask = (store: Any, taskId: String): Option.Option<TaskBlock> => {
@@ -388,12 +388,12 @@ export findTask = (store: Any, taskId: String): Option.Option<TaskBlock> => {
 
 updateStatusInSections = (sections: Array<MarkdownSection>, taskId: String, newStatus: String): Array<MarkdownSection> => {
   statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
-  res = sections |> Array.map((sec: MarkdownSection) => {
-    updatedTasks = sec.tasks |> Array.map((task: TaskBlock) => {
+  res = sections |> map((sec: MarkdownSection) => {
+    updatedTasks = sec.tasks |> map((task: TaskBlock) => {
       hasRaw = task.rawBody #! ""
       isTarget = task.id #= taskId
       raw = match hasRaw
-        | true => task.rawBody |> String.replace(statusRx, "$1Status: " + newStatus)
+        | true => task.rawBody |> replace(statusRx, "$1Status: " + newStatus)
         | false => task.rawBody
       when isTarget => { ...task, status: newStatus, rawBody: raw }
       => task
@@ -404,15 +404,15 @@ updateStatusInSections = (sections: Array<MarkdownSection>, taskId: String, newS
 }
 
 addTaskToSections = (sections: Array<MarkdownSection>, targetTitle: String, task: TaskBlock, prepend: Boolean): Array<MarkdownSection> => {
-  targetLower = targetTitle |> String.toLowerCase
-  targetIndex = sections |> Array.findFirstIndex((s: MarkdownSection) => (s.title |> String.toLowerCase) #= targetLower)
+  targetLower = targetTitle |> toLowerCase
+  targetIndex = sections |> findFirstIndex((s: MarkdownSection) => (s.title |> String.toLowerCase) #= targetLower)
 
   updatedSections = match targetIndex
     | Some(idx) =>
-        sections |> Array.map((sec: MarkdownSection, i: Number) => {
+        sections |> map((sec: MarkdownSection, i: Number) => {
           newTasks = match prepend
-            | true => [task] |> Array.appendAll(sec.tasks)
-            | false => sec.tasks |> Array.append(task)
+            | true => [task] |> appendAll(sec.tasks)
+            | false => sec.tasks |> append(task)
           when (i #= idx) => { ...sec, tasks: newTasks, rawContent: "" }
           => sec
         })
@@ -423,7 +423,7 @@ addTaskToSections = (sections: Array<MarkdownSection>, targetTitle: String, task
           tasks: [task],
           rawContent: ""
         }
-        sections |> Array.append(newSec)
+        sections |> append(newSec)
   => updatedSections
 }
 
@@ -433,12 +433,12 @@ schema RemoveResult = {
 }
 
 removeTaskFromSections = (sections: Array<MarkdownSection>, taskId: String): RemoveResult => {
-  foundTaskOpt = sections |> Array.findFirst((sec: MarkdownSection) => sec.tasks |> Array.some((t: TaskBlock) => t.id #= taskId)) |> Option.flatMap((sec: MarkdownSection) => sec.tasks |> Array.findFirst((t: TaskBlock) => t.id #= taskId))
+  foundTaskOpt = sections |> findFirst((sec: MarkdownSection) => sec.tasks |> Array.some((t: TaskBlock) => t.id #= taskId)) |> flatMap((sec: MarkdownSection) => sec.tasks |> findFirst((t: TaskBlock) => t.id #= taskId))
 
   updatedSections = match foundTaskOpt
     | Some(_) =>
-        sections |> Array.map((sec: MarkdownSection) => {
-          filteredTasks = sec.tasks |> Array.filter((t: TaskBlock) => t.id #! taskId)
+        sections |> map((sec: MarkdownSection) => {
+          filteredTasks = sec.tasks |> filter((t: TaskBlock) => t.id #! taskId)
           raw = match (sec.tasks.length > 0 and filteredTasks.length #= 0 and sec.rawContent #= "")
             | true => "*Idle - Ready for next backlog assignment.*"
             | false => sec.rawContent
@@ -533,7 +533,7 @@ export loadBoardStoreEffect = (boardDir: String) => effect {
   => store
 }
 
-export loadBoardStore = (boardDir: String) => loadBoardStoreEffect(boardDir) |> Effect.provide(BunServices.layer)
+export loadBoardStore = (boardDir: String) => loadBoardStoreEffect(boardDir) |> provide(BunServices.layer)
 
 export loadBoardStoreSync = (boardDir: String): BoardStore => {
   tasksPath = boardDir + "/TASKS.md"
@@ -607,7 +607,7 @@ export persistBoardStoreEffect = (store: BoardStore) => effect {
   => true
 }
 
-export persistBoardStore = (store: BoardStore) => persistBoardStoreEffect(store) |> Effect.provide(BunServices.layer)
+export persistBoardStore = (store: BoardStore) => persistBoardStoreEffect(store) |> provide(BunServices.layer)
 
 export persistBoardStoreSync = (store: BoardStore) => {
   dir = match store.boardDir
@@ -632,7 +632,7 @@ moveTaskInTasksDocument = (doc: TasksDocument, taskId: String, targetSectionTitl
 
   emptyBlock = { id: "", title: "", category: "", owner: "", branch: "", status: "", dependencies: [], objective: "", scope: "", acceptanceCriteria: "", rawBody: "" }
   foundTask = r.maybeTask |> Option.getOrElse(() => emptyBlock)
-  lowerTarget = targetSectionTitle |> String.toLowerCase
+  lowerTarget = targetSectionTitle |> toLowerCase
   isArchive = (lowerTarget |> String.includes("archive")) or (lowerTarget |> String.includes("done"))
 
   statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
@@ -644,16 +644,16 @@ moveTaskInTasksDocument = (doc: TasksDocument, taskId: String, targetSectionTitl
   rawDoneFinal = match doneNeedsDate
     | true => rawDone |> String.replace(statusDoneRx, "$1Status: Done\nCompleted: " + today)
     | false => rawDone
-  owner1 = lowerTarget |> String.includes("dev agent 1")
-  owner2 = lowerTarget |> String.includes("dev agent 2")
+  owner1 = lowerTarget |> includes("dev agent 1")
+  owner2 = lowerTarget |> includes("dev agent 2")
   targetIsAgent = owner1 or owner2
-  targetIsBacklog = lowerTarget |> String.includes("backlog")
+  targetIsBacklog = lowerTarget |> includes("backlog")
   owner1Value = match owner1 | true => Option.some("Dev Agent 1") | false => Option.none()
   owner2Value = match owner2 | true => Option.some("Dev Agent 2") | false => Option.none()
-  newOwner = owner1Value |> Option.orElse(() => owner2Value) |> Option.getOrElse(() => foundTask.owner)
+  newOwner = owner1Value |> orElse(() => owner2Value) |> getOrElse(() => foundTask.owner)
   agentStatus = match targetIsAgent | true => Option.some("In Progress") | false => Option.none()
   backlogStatus = match targetIsBacklog | true => Option.some("Backlog") | false => Option.none()
-  newStatus = agentStatus |> Option.orElse(() => backlogStatus) |> Option.getOrElse(() => foundTask.status)
+  newStatus = agentStatus |> orElse(() => backlogStatus) |> getOrElse(() => foundTask.status)
   rawUpdated = foundTask.rawBody |> String.replace(statusRx, "$1Status: " + newStatus)
   rawUpdatedOwner = match ((rawUpdated #! "") and (newOwner #! ""))
     | true => rawUpdated |> String.replace(ownerRx, "$1Owner: " + newOwner)
@@ -673,12 +673,12 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
 
   r2 = removeTaskFromSections(store.archiveDoc.sections, taskId)
   bTasks = parseBacklogTasks(store.backlogContent)
-  foundBacklog = bTasks |> Array.findFirst((t: TaskBlock) => t.id #= taskId)
-  maybeTask = r1.maybeTask |> Option.orElse(() => r2.maybeTask) |> Option.orElse(() => foundBacklog)
+  foundBacklog = bTasks |> findFirst((t: TaskBlock) => t.id #= taskId)
+  maybeTask = r1.maybeTask |> orElse(() => r2.maybeTask) |> orElse(() => foundBacklog)
   useTasks = Option.isSome(r1.maybeTask)
   useArchive = not useTasks and Option.isSome(r2.maybeTask)
-  taskFromTasks = r1.maybeTask |> Option.getOrElse(() => emptyBlock)
-  taskFromArchive = r2.maybeTask |> Option.getOrElse(() => emptyBlock)
+  taskFromTasks = r1.maybeTask |> getOrElse(() => emptyBlock)
+  taskFromArchive = r2.maybeTask |> getOrElse(() => emptyBlock)
   taskFromBacklog = foundBacklog |> Option.getOrElse(() => emptyBlock)
   newTasksDoc = { ...store.tasksDoc, sections: r1.updatedSections, lanes: r1.updatedSections }
   newArchiveDoc = { ...store.archiveDoc, sections: r2.updatedSections, lanes: r2.updatedSections }
@@ -694,13 +694,13 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
     | true => Option.some({ store: { ...store, backlogContent: newBacklog }, task: Option.some(taskFromBacklog) })
     | false => Option.none()
   unchanged = { store: store, task: maybeTask }
-  taskAndStore = fromTasks |> Option.orElse(() => fromArchive) |> Option.orElse(() => fromBacklog) |> Option.getOrElse(() => unchanged)
+  taskAndStore = fromTasks |> orElse(() => fromArchive) |> orElse(() => fromBacklog) |> getOrElse(() => unchanged)
 
   when (Option.isNone(taskAndStore.task)) => store
 
   foundTask = taskAndStore.task |> Option.getOrElse(() => emptyBlock)
   curStore = taskAndStore.store
-  lowerTarget = targetSectionTitle |> String.toLowerCase
+  lowerTarget = targetSectionTitle |> toLowerCase
   isArchive = (lowerTarget |> String.includes("archive")) or (lowerTarget |> String.includes("done"))
 
   statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
@@ -712,16 +712,16 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
   rawDoneFinal = match doneNeedsDate
     | true => rawDone |> String.replace(statusDoneRx, "$1Status: Done\nCompleted: " + today)
     | false => rawDone
-  owner1 = lowerTarget |> String.includes("dev agent 1")
-  owner2 = lowerTarget |> String.includes("dev agent 2")
+  owner1 = lowerTarget |> includes("dev agent 1")
+  owner2 = lowerTarget |> includes("dev agent 2")
   targetIsAgent = owner1 or owner2
-  targetIsBacklog = lowerTarget |> String.includes("backlog")
+  targetIsBacklog = lowerTarget |> includes("backlog")
   owner1Value = match owner1 | true => Option.some("Dev Agent 1") | false => Option.none()
   owner2Value = match owner2 | true => Option.some("Dev Agent 2") | false => Option.none()
-  newOwner = owner1Value |> Option.orElse(() => owner2Value) |> Option.getOrElse(() => foundTask.owner)
+  newOwner = owner1Value |> orElse(() => owner2Value) |> getOrElse(() => foundTask.owner)
   agentStatus = match targetIsAgent | true => Option.some("In Progress") | false => Option.none()
   backlogStatus = match targetIsBacklog | true => Option.some("Backlog") | false => Option.none()
-  newStatus = agentStatus |> Option.orElse(() => backlogStatus) |> Option.getOrElse(() => foundTask.status)
+  newStatus = agentStatus |> orElse(() => backlogStatus) |> getOrElse(() => foundTask.status)
   rawUpdated = foundTask.rawBody |> String.replace(statusRx, "$1Status: " + newStatus)
   rawUpdatedOwner = match ((rawUpdated #! "") and (newOwner #! ""))
     | true => rawUpdated |> String.replace(ownerRx, "$1Owner: " + newOwner)
@@ -730,7 +730,7 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
   archiveSections = addTaskToSections(curStore.archiveDoc.sections, "Done", archiveTask, true)
   archiveDoc = { ...curStore.archiveDoc, sections: archiveSections, lanes: archiveSections }
   bulletPattern = "- [x] " + archiveTask.id + ":"
-  hasBullet = curStore.archiveContent |> String.includes(bulletPattern)
+  hasBullet = curStore.archiveContent |> includes(bulletPattern)
   bullet = "- [x] " + archiveTask.id + ": " + archiveTask.title + "\n"
   archiveRx = RegExp("(# ARCHIVE[^\\n]*\\n\\n[^\\n]*\\n\\n)")
   archiveContent = match hasBullet

@@ -22,7 +22,7 @@ safeInvoke = (target: Unknown, method: String, args: Array<Unknown>) => {
 }
 
 resolveLaneId = (name: String): String => {
-  laneIdRaw = name |> String.replace(RegExp("\\s+In Progress$", "i"), "") |> String.trim
+  laneIdRaw = name |> replace(RegExp("\\s+In Progress$", "i"), "") |> trim
   when (laneIdRaw #! "") => laneIdRaw
   => name
 }
@@ -38,7 +38,7 @@ resolveBranch = (branch: String): Option<String> => {
 }
 
 readLanesAndStoreLogs = (boardDir: String) => {
-  storeRes = Effect.try(() => loadBoardStoreSync(boardDir)) |> Effect.option |> Effect.runSync
+  storeRes = Effect.try(() => loadBoardStoreSync(boardDir)) |> option |> Effect.runSync
   match storeRes
     | None => { lanes: [], logs: [] }
     | Some(store) =>
@@ -96,17 +96,17 @@ readTokensWorkflow = (boardDir: String) => effect {
   when (not hasPrimary and not hasAlt) => fallbackTokenUsage
 
   targetPath = resolveTargetPath(hasPrimary, tokenPath, altTokenPath)
-  rawOpt <- fsService.readFileString(targetPath) |> Effect.option
+  rawOpt <- fsService.readFileString(targetPath) |> option
   rawStr = Option.getOrElse(rawOpt, () => "")
   when (rawStr #= "") => fallbackTokenUsage
 
   parsed = Schema.decodeUnknownOption(Schema.fromJsonString(TokenUsage))(rawStr)
-  => parsed |> Option.getOrElse(() => fallbackTokenUsage)
+  => parsed |> getOrElse(() => fallbackTokenUsage)
 }
 
 readTokensSync = (boardDir: String): TokenUsage => {
   fallbackTokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-  res = readTokensWorkflow(boardDir) |> Effect.provide(BunServices.layer) |> Effect.catch((_) => Effect.succeed(fallbackTokenUsage)) |> Effect.runSync
+  res = readTokensWorkflow(boardDir) |> provide(BunServices.layer) |> Effect.catch((_) => Effect.succeed(fallbackTokenUsage)) |> Effect.runSync
   => res
 }
 
@@ -117,17 +117,17 @@ readRecentLogsWorkflow = (boardDir: String, initialLogs: Array<String>) => effec
   hasLog <- fsService.exists(logPath)
   when (not hasLog) => initialLogs
 
-  rawOpt <- fsService.readFileString(logPath) |> Effect.option
+  rawOpt <- fsService.readFileString(logPath) |> option
   raw = Option.getOrElse(rawOpt, () => "")
   when (raw #= "") => initialLogs
 
-  lines = raw |> String.split("\n") |> Array.filter((l: String) => (l |> String.trim) #! "")
+  lines = raw |> split("\n") |> filter((l: String) => (l |> String.trim) #! "")
   recentLines = lines |> Array.takeRight(10)
   => Array.appendAll(initialLogs, recentLines)
 }
 
 readRecentLogsSync = (boardDir: String, initialLogs: Array<String>): Array<String> => {
-  logsFromFs = readRecentLogsWorkflow(boardDir, initialLogs) |> Effect.provide(BunServices.layer) |> Effect.catch((_) => Effect.succeed(initialLogs)) |> Effect.runSync
+  logsFromFs = readRecentLogsWorkflow(boardDir, initialLogs) |> provide(BunServices.layer) |> Effect.catch((_) => Effect.succeed(initialLogs)) |> Effect.runSync
   => logsFromFs
 }
 
@@ -170,7 +170,7 @@ extractFromOption = (opt: Any): Number => {
 
 export extractMaxTicks = (opt: Any): Number => {
   when (Option.isOption(opt)) => extractFromOption(opt)
-  when (Predicate.isNotNullish(opt) and isPositiveNumber(opt)) => (Number.parse("" + opt) |> Option.getOrElse(() => Infinity))
+  when (Predicate.isNotNullish(opt) and isPositiveNumber(opt)) => (Number.parse("" + opt) |> getOrElse(() => Infinity))
   => Infinity
 }
 
@@ -257,7 +257,7 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
     _tk <- tick
     _sl <- Effect.sleep(Duration.millis(intervalMs))
     => true
-  } |> Effect.repeat(Schedule.forever)
+  } |> repeat(Schedule.forever)
 
   _fk <- Effect.forkScoped(tickLoop)
 
@@ -274,7 +274,7 @@ export defaultLiveViewOptions: LiveViewOptions = {
 }
 
 export runLiveView = (boardDir: String, pollMs: Number = 1000, options: LiveViewOptions = defaultLiveViewOptions) =>
-  runLiveViewScoped(boardDir, pollMs, options) |> Effect.scoped
+  runLiveViewScoped(boardDir, pollMs, options) |> scoped
 
 export runLiveViewAsync = (boardDir: String, pollMs: Number = 1000, options: LiveViewOptions = defaultLiveViewOptions) =>
   Effect.runPromise(runLiveView(boardDir, pollMs, options))

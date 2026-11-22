@@ -29,13 +29,13 @@ export readOptionalFileWorkflow = (filePath: String, fallback: String) => effect
   exists <- fs.exists(filePath) |> Effect.catch((_) => Effect.succeed(false))
   when (not exists) => fallback
   content <- fs.readFileString(filePath) |> Effect.catch((_) => Effect.succeed(""))
-  trimmed = content |> String.trim
+  trimmed = content |> trim
   when (trimmed #= "") => fallback
   => trimmed
 }
 
 export readOptionalFileEffect = (filePath: String, fallback: String) => {
-  => readOptionalFileWorkflow(filePath, fallback) |> Effect.provide(BunServices.layer)
+  => readOptionalFileWorkflow(filePath, fallback) |> provide(BunServices.layer)
 }
 
 export readOptionalFile = (filePath: String, fallback: String) => {
@@ -95,7 +95,7 @@ export buildDevAgentPromptWorkflow = (boardDir: String, task: TaskBlock, agentNa
 
   deps = match (not task or not task.dependencies or task.dependencies.length #= 0)
     | true => "none"
-    | false => task.dependencies |> Array.join(", ")
+    | false => task.dependencies |> join(", ")
 
   taskObjective = match (not task or not task.objective or task.objective #= "")
     | true => "No objective provided."
@@ -157,12 +157,12 @@ export buildDevAgentPromptWorkflow = (boardDir: String, task: TaskBlock, agentNa
     taskAcceptanceCriteria
   ]
 
-  allSections = baseSections |> Array.appendAll(techSections) |> Array.appendAll(tailSections)
+  allSections = baseSections |> appendAll(techSections) |> appendAll(tailSections)
   => allSections |> Array.join("\n")
 }
 
 export buildDevAgentPromptEffect = (boardDir: String, task: TaskBlock, agentName: String) => {
-  => buildDevAgentPromptWorkflow(boardDir, task, agentName) |> Effect.provide(BunServices.layer)
+  => buildDevAgentPromptWorkflow(boardDir, task, agentName) |> provide(BunServices.layer)
 }
 
 export buildDevAgentPrompt = (boardDir: String, task: TaskBlock, agentName: String) => {
@@ -175,7 +175,7 @@ export buildDevAgentPromptFun = (boardDir: String, task: TaskBlock, agentName: S
 
 formatActiveTasks = (activeTasks: Array<TaskBlock>) => {
   pattern = RegExp("\\n+", "g")
-  taskLines = activeTasks |> Array.map((t: TaskBlock, idx: Number) => {
+  taskLines = activeTasks |> map((t: TaskBlock, idx: Number) => {
     owner = match (not t.owner or t.owner #= "")
       | true => "Unassigned"
       | false => t.owner
@@ -194,11 +194,11 @@ formatActiveTasks = (activeTasks: Array<TaskBlock>) => {
 
     deps = match (not t.dependencies or t.dependencies.length #= 0)
       | true => "none"
-      | false => t.dependencies |> Array.join(", ")
+      | false => t.dependencies |> join(", ")
 
     cleanObj = match (not t.objective or t.objective #= "")
       | true => "N/A"
-      | false => t.objective |> String.replace(pattern, " ")
+      | false => t.objective |> replace(pattern, " ")
 
     laneNum = "" + (idx + 1)
     lines = [
@@ -210,7 +210,7 @@ formatActiveTasks = (activeTasks: Array<TaskBlock>) => {
       "  - Dependencies: " + deps,
       "  - Objective: " + cleanObj
     ]
-    => lines |> Array.join("\n")
+    => lines |> join("\n")
   })
   => taskLines |> Array.join("\n\n")
 }
@@ -235,7 +235,7 @@ export buildTeamLeadPromptWorkflow = (boardDir: String, backlogContent: String, 
 
   trimmedBacklog = match (not backlogContent or backlogContent #= "")
     | true => ""
-    | false => backlogContent |> String.trim
+    | false => backlogContent |> trim
 
   cleanBacklog = match (trimmedBacklog #= "")
     | true => "# BACKLOG\n\nNo pending backlog items."
@@ -269,11 +269,11 @@ export buildTeamLeadPromptWorkflow = (boardDir: String, backlogContent: String, 
     "4. Ensure non-overlapping scope and file ownership between active agents to prevent merge conflicts."
   ]
 
-  => sections |> Array.join("\n")
+  => sections |> join("\n")
 }
 
 export buildTeamLeadPromptEffect = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) => {
-  => buildTeamLeadPromptWorkflow(boardDir, backlogContent, activeTasks) |> Effect.provide(BunServices.layer)
+  => buildTeamLeadPromptWorkflow(boardDir, backlogContent, activeTasks) |> provide(BunServices.layer)
 }
 
 export buildTeamLeadPrompt = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) => {

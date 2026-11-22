@@ -106,13 +106,13 @@ export schema HelpResult = {
 export error CliCommandError(message: String)
 
 export getEnvVar = (name: String): Option<String> =>
-  Option.fromNullishOr(process) |> Option.flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "env"))) |> Option.flatMap((env) => Option.fromNullishOr(Reflect.get(env, name))) |> Option.map((val) => "" + val)
+  Option.fromNullishOr(process) |> flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "env"))) |> flatMap((env) => Option.fromNullishOr(Reflect.get(env, name))) |> map((val) => "" + val)
 
 export getProcessArgv = (): Array<String> =>
-  Option.fromNullishOr(process) |> Option.flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "argv"))) |> Option.getOrElse(() => [])
+  Option.fromNullishOr(process) |> flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "argv"))) |> getOrElse(() => [])
 
 export getProcessExecPath = (): String =>
-  Option.fromNullishOr(process) |> Option.flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "execPath"))) |> Option.map((ep) => "" + ep) |> Option.getOrElse(() => "bun")
+  Option.fromNullishOr(process) |> flatMap((proc) => Option.fromNullishOr(Reflect.get(proc, "execPath"))) |> map((ep) => "" + ep) |> getOrElse(() => "bun")
 
 defaultBoardDirFallback = () => "/home/dangelov/slopboss2-board"
 
@@ -172,24 +172,24 @@ export formatDoctorTable = (report: Any): String => {
     | Some(c) => c
     | None => []
     | _ => []
-  checkLines = rawChecks |> Array.map((c: Any) => {
+  checkLines = rawChecks |> map((c: Any) => {
     cObj: Any = c
     isOk = Option.fromNullishOr(Reflect.get(cObj, "ok")) |> Option.map((ok) => ok #= true) |> Option.getOrElse(() => false)
     status = statusTag(isOk)
     isReq = Option.fromNullishOr(Reflect.get(cObj, "required")) |> Option.map((req) => req #= true) |> Option.getOrElse(() => false)
     req = requiredTag(isReq)
-    name = ("" + Reflect.get(cObj, "name")) |> String.padEnd(12)
+    name = ("" + Reflect.get(cObj, "name")) |> padEnd(12)
     msg = "" + Reflect.get(cObj, "message")
     => status + "  | " + name + " | " + req + "      | " + msg
   })
   isHealthy = Option.fromNullishOr(Reflect.get(repObj, "isHealthy")) |> Option.map((h) => h #= true) |> Option.getOrElse(() => false)
   health = healthTag(isHealthy)
-  allLines = lines |> Array.appendAll(checkLines) |> Array.append("--------------------------------------------------------------------------------") |> Array.append("Overall Health: " + health)
+  allLines = lines |> appendAll(checkLines) |> append("--------------------------------------------------------------------------------") |> append("Overall Health: " + health)
   => allLines |> Array.join("\n")
 }
 
 export getHelpMessage = (subcommand?: String): String => {
-  sub = Option.fromNullishOr(subcommand) |> Option.getOrElse(() => "")
+  sub = Option.fromNullishOr(subcommand) |> getOrElse(() => "")
   when (sub #= "doctor") => [
     "Usage: slopboss2 doctor [options] [path]",
     "",
@@ -198,7 +198,7 @@ export getHelpMessage = (subcommand?: String): String => {
     "Options:",
     "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
     "  -h, --help        Show help for doctor command"
-  ] |> Array.join("\n")
+  ] |> join("\n")
   when (sub #= "run") => [
     "Usage: slopboss2 run [options] [path]",
     "",
@@ -211,7 +211,7 @@ export getHelpMessage = (subcommand?: String): String => {
     "  --max-ticks <n>       Maximum ticks before exiting (0 for infinite)",
     "  --poll-interval <ms>  Milliseconds between reconciliation ticks",
     "  -h, --help            Show help for run command"
-  ] |> Array.join("\n")
+  ] |> join("\n")
   when (sub #= "init" or sub #= "setup") => [
     "Usage: slopboss2 init [options] [path]",
     "",
@@ -222,7 +222,7 @@ export getHelpMessage = (subcommand?: String): String => {
     "  -r, --repo <url>  Target git repository URL to clone into workspaces",
     "  -a, --agents <n>  Number of dev agents to provision (default: 2)",
     "  -h, --help        Show help for init command"
-  ] |> Array.join("\n")
+  ] |> join("\n")
   when (sub #= "groom") => [
     "Usage: slopboss2 groom [options] [path]",
     "",
@@ -232,7 +232,7 @@ export getHelpMessage = (subcommand?: String): String => {
     "  -d, --dir <path>   Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
     "  -m, --model <name> Override agent model",
     "  -h, --help         Show help for groom command"
-  ] |> Array.join("\n")
+  ] |> join("\n")
   when (sub #= "status") => [
     "Usage: slopboss2 status [options] [path]",
     "",
@@ -241,7 +241,7 @@ export getHelpMessage = (subcommand?: String): String => {
     "Options:",
     "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
     "  -h, --help        Show help for status command"
-  ] |> Array.join("\n")
+  ] |> join("\n")
   when (sub #= "view") => [
     "Usage: slopboss2 view [options] [path]",
     "",
@@ -250,7 +250,7 @@ export getHelpMessage = (subcommand?: String): String => {
     "Options:",
     "  -d, --dir <path>  Board directory path (default: $SLOPBOSS_BOARD_DIR or current directory)",
     "  -h, --help        Show help for view command"
-  ] |> Array.join("\n")
+  ] |> join("\n")
   => [
     "slopboss2 - Autonomous multi-agent orchestrator",
     "",
@@ -269,7 +269,7 @@ export getHelpMessage = (subcommand?: String): String => {
     "Options:",
     "  -h, --help                       Show help information",
     "  -v, --version                    Show version"
-  ] |> Array.join("\n")
+  ] |> join("\n")
 }
 
 schema RawParsedOptions = {
@@ -308,13 +308,13 @@ parseTokens = (subcommand: String, tokens: Array<String>, acc: RawParsedOptions)
   when (tokens.length #= 0) => acc
   when (Option.isSome(acc.unknownOpt)) => acc
 
-  head = tokens |> Array.get(0) |> Option.getOrElse(() => "")
-  tail = tokens |> Array.drop(1)
+  head = tokens |> get(0) |> Option.getOrElse(() => "")
+  tail = tokens |> drop(1)
 
   when (head #= "") => parseTokens(subcommand, tail, acc)
 
-  isFlag = head |> String.startsWith("-")
-  when (not isFlag) => parseTokens(subcommand, tail, { ...acc, positionals: acc.positionals |> Array.append(head) })
+  isFlag = head |> startsWith("-")
+  when (not isFlag) => parseTokens(subcommand, tail, { ...acc, positionals: acc.positionals |> append(head) })
 
   isDirCommand = subcommand #= "doctor" or subcommand #= "run" or subcommand #= "init" or subcommand #= "setup" or subcommand #= "groom" or subcommand #= "status" or subcommand #= "view"
   numericArg = tail |> Array.get(0) |> Option.getOrElse(() => "0") |> Number.parse
@@ -352,13 +352,13 @@ normalizeSubcommand = (cmd: String): String => {
 }
 
 export parseCliArgs = (argv?: Array<String>) => {
-  args = Option.fromNullishOr(argv) |> Option.getOrElse(() => [])
+  args = Option.fromNullishOr(argv) |> getOrElse(() => [])
   when (args.length #= 0) => { command: "help", type: "help" }
 
-  first = args |> Array.get(0) |> Option.getOrElse(() => "")
+  first = args |> get(0) |> Option.getOrElse(() => "")
   when (first #= "--help" or first #= "-h") => { command: "help", type: "help" }
 
-  subArgs = args |> Array.drop(1)
+  subArgs = args |> drop(1)
   subHelp = subArgs |> Array.get(0)
   when (first #= "help" and Option.isSome(subHelp)) => {
     command: "help",
@@ -390,10 +390,10 @@ export parseCliArgs = (argv?: Array<String>) => {
     subcommand: normCmd
   }
 
-  resolvedDir = parsed.dir |> Option.orElse(() => parsed.positionals |> Array.head) |> Option.getOrElse(() => DEFAULT_BOARD_DIR)
+  resolvedDir = parsed.dir |> orElse(() => parsed.positionals |> head) |> getOrElse(() => DEFAULT_BOARD_DIR)
 
-  repo = parsed.repoUrl |> Option.getOrElse(() => "https://github.com/de-angelov/slopboss2.git")
-  agentCount = parsed.agents |> Option.getOrElse(() => 2)
+  repo = parsed.repoUrl |> getOrElse(() => "https://github.com/de-angelov/slopboss2.git")
+  agentCount = parsed.agents |> getOrElse(() => 2)
 
   when (normCmd #= "doctor") => { command: "doctor", type: "doctor", dir: resolvedDir, help: parsed.help }
 
@@ -419,8 +419,8 @@ export parseCliArgs = (argv?: Array<String>) => {
 }
 
 parseBoardCommand = (args: Array<String>) => {
-  action = args |> Array.get(0) |> Option.getOrElse(() => "")
-  rest = args |> Array.drop(1)
+  action = args |> get(0) |> Option.getOrElse(() => "")
+  rest = args |> drop(1)
   id = rest |> Array.get(0) |> Option.getOrElse(() => "")
   status = rest |> Array.get(1) |> Option.getOrElse(() => "")
   dirOpt = rest |> Array.findFirstIndex((v) => v #= "--dir") |> Option.flatMap((i) => rest |> Array.get(i + 1))
@@ -429,14 +429,14 @@ parseBoardCommand = (args: Array<String>) => {
 }
 
 parseRecoverCommand = (args: Array<String>) => {
-  dirOpt = args |> Array.findFirstIndex((v) => v #= "--dir" or v #= "-d") |> Option.flatMap((i) => args |> Array.get(i + 1))
-  dir = Option.getOrElse(dirOpt, () => args |> Array.get(0) |> Option.getOrElse(() => DEFAULT_BOARD_DIR))
+  dirOpt = args |> findFirstIndex((v) => v #= "--dir" or v #= "-d") |> Option.flatMap((i) => args |> get(i + 1))
+  dir = Option.getOrElse(dirOpt, () => args |> get(0) |> Option.getOrElse(() => DEFAULT_BOARD_DIR))
   => { command: "recover", type: "recover", dir: dir }
 }
 
 parseCoordinationCommand = (args: Array<String>) => {
-  action = args |> Array.get(0) |> Option.getOrElse(() => "")
-  rest = args |> Array.drop(1)
+  action = args |> get(0) |> Option.getOrElse(() => "")
+  rest = args |> drop(1)
   statusAt = rest |> Array.findFirstIndex((v) => v #= "--status")
   summaryAt = rest |> Array.findFirstIndex((v) => v #= "--summary")
   status = statusAt |> Option.flatMap((i) => rest |> Array.get(i + 1)) |> Option.getOrElse(() => "")
@@ -550,7 +550,7 @@ safelyUnrefProcess = (procObj: Any, proc: Any) => {
 runReconcilerDetached = (dir: String, rawOptsObj: Any) => effect {
   spawnFnActual: Any = Option.getOrElse(Option.fromNullishOr(Reflect.get(rawOptsObj, "spawnFn")), fallbackSpawnFn)
   procArgv = getProcessArgv()
-  binPath = procArgv |> Array.get(1) |> Option.getOrElse(fallbackBinPath)
+  binPath = procArgv |> get(1) |> Option.getOrElse(fallbackBinPath)
   execPath = getProcessExecPath()
   execArgs = [execPath, "run", binPath, "run", "--dir", dir]
   spawnOpts = {
@@ -568,10 +568,10 @@ runReconcilerDetached = (dir: String, rawOptsObj: Any) => effect {
 runReconcilerForeground = (dir: String, rawOptsObj: Any, maxTicks?: Number, pollIntervalMs?: Number) => effect {
   _ <- Console.log("[SLOPBOSS2] Starting dispatcher reconciler loop for board: " + dir)
   rawOptsPoll: Any = Reflect.get(rawOptsObj, "pollIntervalMs")
-  pollVal = Option.fromNullishOr(pollIntervalMs) |> Option.orElse(() => Option.fromNullishOr(rawOptsPoll)) |> Option.flatMap((p) => Number.parse("" + p)) |> Option.getOrElse(() => 1000)
+  pollVal = Option.fromNullishOr(pollIntervalMs) |> orElse(() => Option.fromNullishOr(rawOptsPoll)) |> flatMap((p) => Number.parse("" + p)) |> getOrElse(() => 1000)
 
   rawOptsIter: Any = Reflect.get(rawOptsObj, "maxIterations")
-  iterVal = Option.fromNullishOr(maxTicks) |> Option.orElse(() => Option.fromNullishOr(rawOptsIter)) |> Option.flatMap((m) => Number.parse("" + m)) |> Option.getOrElse(() => 0)
+  iterVal = Option.fromNullishOr(maxTicks) |> orElse(() => Option.fromNullishOr(rawOptsIter)) |> flatMap((m) => Number.parse("" + m)) |> getOrElse(() => 0)
 
   rawMock: Any = Reflect.get(rawOptsObj, "mockRunner")
   mockOpt = Option.fromNullishOr(rawMock) |> Option.map((m) => m #= true)
@@ -666,7 +666,7 @@ handleHelp = (cmd: Any) => effect {
 handleInvalid = (cmd: Any) => effect {
   obj: Any = cmd
   errRaw: Unknown = Reflect.get(obj, "error")
-  errText = Option.fromNullishOr(errRaw) |> Option.map((e) => "" + e) |> Option.getOrElse(() => "Unknown error")
+  errText = Option.fromNullishOr(errRaw) |> map((e) => "" + e) |> getOrElse(() => "Unknown error")
   errMsg = "Error: " + errText
   _ <- Console.error(errMsg)
   subOpt = Option.fromNullishOr(Reflect.get(obj, "subcommand")) |> Option.map((s) => "" + s)
@@ -681,7 +681,7 @@ runViewCommandWithOpts = (cmd: Any, options?: Any) => {
   dirStr = Option.fromNullishOr(Reflect.get(obj, "dir")) |> Option.map((d) => "" + d) |> Option.getOrElse(() => DEFAULT_BOARD_DIR)
   rawCmdPoll: Option<Any> = Option.fromNullishOr(Reflect.get(obj, "pollIntervalMs"))
   rawOptsPoll: Option<Any> = Option.fromNullishOr(Reflect.get(rawOpts, "pollIntervalMs"))
-  pollValNum = rawCmdPoll |> Option.orElse(() => rawOptsPoll) |> Option.flatMap((p) => Number.parse("" + p)) |> Option.getOrElse(() => 1000)
+  pollValNum = rawCmdPoll |> orElse(() => rawOptsPoll) |> flatMap((p) => Number.parse("" + p)) |> getOrElse(() => 1000)
   viewOptsRaw: Option<Any> = Option.fromNullishOr(Reflect.get(rawOpts, "viewOptions"))
   viewOpts: LiveViewOptions = match viewOptsRaw
     | Some(v) => v
@@ -729,7 +729,7 @@ export dispatchCli = (cmd: Any, options?: Any) => {
 }
 
 dispatchCoordinationCommand = (cmd: Any) => {
-  reportPath = getEnvVar("SLOPBOSS_COORDINATION_REPORT") |> Option.getOrElse(() => "")
+  reportPath = getEnvVar("SLOPBOSS_COORDINATION_REPORT") |> getOrElse(() => "")
   report = { status: "" + Reflect.get(cmd, "status"), summary: "" + Reflect.get(cmd, "summary") }
   => writeCoordinationReport(reportPath, report)
 }
@@ -765,8 +765,8 @@ boardSet = (dir: String, id: String, status: String) => effect {
 }
 
 export runCli = (argv?: Array<String>, options?: Any) => {
-  fallbackArgs = getProcessArgv() |> Array.drop(2)
-  args = Option.fromNullishOr(argv) |> Option.getOrElse(() => fallbackArgs)
+  fallbackArgs = getProcessArgv() |> drop(2)
+  args = Option.fromNullishOr(argv) |> getOrElse(() => fallbackArgs)
   parsed = parseCliArgs(args)
   opts: Unknown = Option.getOrUndefined(Option.fromNullishOr(options))
   => dispatchCli(parsed, opts)

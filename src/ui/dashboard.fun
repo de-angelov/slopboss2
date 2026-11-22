@@ -49,7 +49,7 @@ export renderTokenSection = (tokens: TokenUsage) =>
 
 export renderLogsSection = (logs: Array<String>) =>
   header = "Recent Events:\n"
-  formattedLogs = logs |> Array.map((log) => "  > " + log) |> Array.join("\n")
+  formattedLogs = logs |> map((log) => "  > " + log) |> join("\n")
   => header + formattedLogs
 
 export renderDashboard = (state: DashboardState, clearScreen: Boolean) =>
@@ -64,7 +64,7 @@ export renderDashboard = (state: DashboardState, clearScreen: Boolean) =>
   divider = "---------------------------------------------------------\n"
 
   lanesHeader = "Agent Lanes:\n"
-  renderedLanes = state.lanes |> Array.map(renderLane) |> Array.join("\n")
+  renderedLanes = state.lanes |> map(renderLane) |> join("\n")
   lanesSection = lanesHeader + renderedLanes + "\n"
 
   tokensLine = renderTokenSection(state.tokens) + "\n"

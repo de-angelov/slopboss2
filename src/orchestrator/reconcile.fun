@@ -80,7 +80,7 @@ export startReconcileLoop = (boardDir: String, maxTicks: Number) => effect {
   _ <- Console.log("Starting fiber-supervised orchestrator loop for " + boardDir)
   policy = Schedule.recurs(maxTicks)
   tickEffect = reconcileTick(stateRef, boardDir)
-  repeated = tickEffect |> Effect.repeat(policy)
+  repeated = tickEffect |> repeat(policy)
   result <- repeated
   finalState <- Ref.get(stateRef)
   _ <- Console.log("Orchestrator completed " + maxTicks + " iterations. Final agent statuses:")

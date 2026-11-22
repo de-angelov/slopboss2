@@ -16,12 +16,12 @@ runSyncEffect = <A>(eff: Effect.Effect<A, Never>): A => {
 
 export isPidAlive = (pid: Number) => {
   when (pid <= 0) => false
-  eff = Effect.try(() => process.kill(pid, 0)) |> Effect.map(() => true) |> Effect.orElseSucceed(() => false)
+  eff = Effect.try(() => process.kill(pid, 0)) |> map(() => true) |> orElseSucceed(() => false)
   => runSyncEffect(eff)
 }
 
 export getLockPath = (boardDir: String) => {
-  when (boardDir |> String.endsWith("/")) => boardDir + ".slopboss-board.lock"
+  when (boardDir |> endsWith("/")) => boardDir + ".slopboss-board.lock"
   => boardDir + "/.slopboss-board.lock"
 }
 
@@ -48,8 +48,8 @@ handleValidLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir:
 }
 
 handleExistingLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir: String) => effect {
-  readAttempt <- fsService.readFileString(lockPath) |> Effect.option
-  parsed = readAttempt |> Option.flatMap(tryParseLockFile)
+  readAttempt <- fsService.readFileString(lockPath) |> option
+  parsed = readAttempt |> flatMap(tryParseLockFile)
   _ <- match parsed
     | Some(lock) => handleValidLock(fsService, lockPath, boardDir, lock)
     | None => logAndRemoveLock(fsService, lockPath, "Corrupted lock file detected")
@@ -58,7 +58,7 @@ handleExistingLock = (fsService: FileSystem.FileSystem, lockPath: String, boardD
 
 removeLockIfOwned = (fsService: FileSystem.FileSystem, lockPath: String, parsed: Option<BoardLock>, lock: BoardLock, currentPid: Number, currentTime: Number) =>
   match (Option.isSome(parsed) and lock.pid #= currentPid and lock.timestamp #= currentTime)
-    | true => fsService.remove(lockPath) |> Effect.ignore
+    | true => fsService.remove(lockPath) |> ignore
     | false => Effect.void
 
 releaseOwnLock = (fsService: FileSystem.FileSystem, lockPath: String, currentPid: Number, currentTime: Number) => effect {
@@ -66,14 +66,14 @@ releaseOwnLock = (fsService: FileSystem.FileSystem, lockPath: String, currentPid
   _ <- match lockExists
     | false => Effect.void
     | true => effect {
-      rawOption <- fsService.readFileString(lockPath) |> Effect.option
-      parsed = rawOption |> Option.flatMap(tryParseLockFile)
+      rawOption <- fsService.readFileString(lockPath) |> option
+      parsed = rawOption |> flatMap(tryParseLockFile)
       lock = parsed |> Option.getOrElse(() => ({ pid: 0, timestamp: 0 }))
       _ <- removeLockIfOwned(fsService, lockPath, parsed, lock, currentPid, currentTime)
       => Unit
     }
   => Unit
-} |> Effect.ignore
+} |> ignore
 
 // --- Main lock acquisition ---
 

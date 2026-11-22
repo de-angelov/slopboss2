@@ -21,7 +21,7 @@ export schema DoctorReportTs = DoctorReport
 
 export checkGitInstalledWorkflow = (gitCmd: String) => effect {
   res = safeSpawnSync([gitCmd, "--version"])
-  outText = res.stdout |> String.trim
+  outText = res.stdout |> trim
   successMsg = match outText #= ""
     | true => "Git is installed"
     | false => outText
@@ -68,7 +68,7 @@ export checkGitInstalledWith = (gitCmd: String) => effect {
 
 export checkBunInstalledWorkflow = (bunCmd: String) => effect {
   res = safeSpawnSync([bunCmd, "--version"])
-  outText = res.stdout |> String.trim
+  outText = res.stdout |> trim
   successMsg = match outText #= ""
     | true => "Bun is installed"
     | false => "bun " + outText
@@ -119,11 +119,11 @@ export checkProviderInstalledWorkflow = (providers: Array<String>) => effect {
     | false => providers
 
   mut found: Option<CheckResult> = Option.none()
-  _ = listToCheck |> Array.forEach((p) => {
+  _ = listToCheck |> forEach((p) => {
     when (Option.isSome(found)) => true
     res = safeSpawnSync([p, "--version"])
     when (res.ok) {
-      ver = res.stdout |> String.trim
+      ver = res.stdout |> trim
       label = match p
         | "agy" => "Antigravity CLI (agy)"
         | "gemini" => "Gemini CLI"
@@ -216,11 +216,11 @@ export checkBoardDirectoryWorkflow = (boardDir: String) => effect {
 }
 
 export checkBoardDirectory = (boardDir: String) => effect {
-  res <- checkBoardDirectoryWorkflow(boardDir) |> Effect.provide(BunServices.layer)
+  res <- checkBoardDirectoryWorkflow(boardDir) |> provide(BunServices.layer)
   => res
 }
 
-export checkBoardDirectorySync = (boardDir: String) => Effect.runSync(checkBoardDirectoryWorkflow(boardDir) |> Effect.provide(SyncServices.layer))
+export checkBoardDirectorySync = (boardDir: String) => Effect.runSync(checkBoardDirectoryWorkflow(boardDir) |> provide(SyncServices.layer))
 
 export checkWorkspacesWorkflow = (boardDir: String) => effect {
   when (boardDir #= "") => {
@@ -258,7 +258,7 @@ export checkWorkspacesWorkflow = (boardDir: String) => effect {
     required: true
   }
 
-  accessEffect = fs.access(workspacesPath, { readable: true, writable: true }) |> Effect.as(true) |> Effect.catch((_) => Effect.succeed(false))
+  accessEffect = fs.access(workspacesPath, { readable: true, writable: true }) |> as(true) |> Effect.catch((_) => Effect.succeed(false))
   accessRes <- accessEffect
 
   when (not accessRes) => {
@@ -277,11 +277,11 @@ export checkWorkspacesWorkflow = (boardDir: String) => effect {
 }
 
 export checkWorkspaces = (boardDir: String) => effect {
-  res <- checkWorkspacesWorkflow(boardDir) |> Effect.provide(BunServices.layer)
+  res <- checkWorkspacesWorkflow(boardDir) |> provide(BunServices.layer)
   => res
 }
 
-export checkWorkspacesSync = (boardDir: String) => Effect.runSync(checkWorkspacesWorkflow(boardDir) |> Effect.provide(SyncServices.layer))
+export checkWorkspacesSync = (boardDir: String) => Effect.runSync(checkWorkspacesWorkflow(boardDir) |> provide(SyncServices.layer))
 
 export runDoctorWorkflow = (boardDir: String) => effect {
   gitCheck <- checkGitInstalledWorkflow("git")
@@ -303,8 +303,8 @@ export runDoctorWorkflow = (boardDir: String) => effect {
 }
 
 export runDoctor = (boardDir: String) => effect {
-  res <- runDoctorWorkflow(boardDir) |> Effect.provide(BunServices.layer)
+  res <- runDoctorWorkflow(boardDir) |> provide(BunServices.layer)
   => res
 }
 
-export runDoctorSync = (boardDir: String) => Effect.runSync(runDoctorWorkflow(boardDir) |> Effect.provide(SyncServices.layer))
+export runDoctorSync = (boardDir: String) => Effect.runSync(runDoctorWorkflow(boardDir) |> provide(SyncServices.layer))

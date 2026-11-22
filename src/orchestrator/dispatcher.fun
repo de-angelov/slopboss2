@@ -107,12 +107,12 @@ getDocCompletedIds = (archiveDoc: TasksDocument): Array<String> => {
   sectionsOpt = Option.fromNullishOr(doc.sections)
   when (Option.isNone(sectionsOpt)) => []
   sections: Array<MarkdownSection> = doc.sections
-  res = sections |> Array.flatMap((sec: MarkdownSection) => {
+  res = sections |> flatMap((sec: MarkdownSection) => {
     tasksOpt = Option.fromNullishOr(sec.tasks)
     when (Option.isNone(tasksOpt)) => []
     tasks: Array<TaskBlock> = sec.tasks
     initAcc: Array<String> = []
-    => tasks |> Array.reduce(initAcc, (acc, t: TaskBlock) => {
+    => tasks |> reduce(initAcc, (acc, t: TaskBlock) => {
       id = Option.getOrElse(Option.fromNullishOr(t.id), () => "")
       when (id #= "") => acc
       => acc |> Array.append(id)
@@ -130,7 +130,7 @@ getContentCompletedIds = (archiveContent: String): Array<String> => {
 
   matches1 = Array.fromIterable(content.matchAll(bulletRx))
   initIds1: Array<String> = []
-  ids1 = matches1 |> Array.reduce(initIds1, (acc, m) => {
+  ids1 = matches1 |> reduce(initIds1, (acc, m) => {
     rawId = Option.getOrElse(Option.fromNullishOr(Reflect.get(m, 1)), () => "")
     when (rawId #= "") => acc
     => acc |> Array.append("" + rawId)
@@ -138,7 +138,7 @@ getContentCompletedIds = (archiveContent: String): Array<String> => {
 
   matches2 = Array.fromIterable(content.matchAll(taskRx))
   initIds2: Array<String> = []
-  ids2 = matches2 |> Array.reduce(initIds2, (acc, m) => {
+  ids2 = matches2 |> reduce(initIds2, (acc, m) => {
     rawId = Option.getOrElse(Option.fromNullishOr(Reflect.get(m, 1)), () => "")
     when (rawId #= "") => acc
     => acc |> Array.append("" + rawId)
@@ -150,7 +150,7 @@ getContentCompletedIds = (archiveContent: String): Array<String> => {
 getCompletedTaskIds = (store: BoardStore): Array<String> => {
   docIds = getDocCompletedIds(store.archiveDoc)
   contentIds = getContentCompletedIds(store.archiveContent)
-  allIds = docIds |> Array.appendAll(contentIds)
+  allIds = docIds |> appendAll(contentIds)
   => Array.dedupe(allIds)
 }
 
@@ -161,7 +161,7 @@ zipIdleAndTasks = (agents: Array<IdleAgent>, tasks: Array<TaskBlock>): Array<Pai
   emptyIdle: IdleAgent = { agentId: "", laneTitle: "", agentIndex: 0 }
   emptyTask: TaskBlock = { id: "", title: "", category: "", owner: "", branch: "", status: "", dependencies: [], objective: "", scope: "", acceptanceCriteria: "", rawBody: "" }
   initPairs: Array<PairItem> = []
-  res = indices |> Array.reduce(initPairs, (acc, i) => {
+  res = indices |> reduce(initPairs, (acc, i) => {
     aOpt = agents[i]
     tOpt = tasks[i]
     when (Option.isNone(aOpt) or Option.isNone(tOpt)) => acc
@@ -181,8 +181,8 @@ resolveBranchName = (rawBranch: Option.Option<String>, agentIndex: Number, taskI
 }
 
 runGitInWorkspace = (args: Array<String>, workspace: String) => {
-  proc = Bun.spawnSync(["git"] |> Array.appendAll(args), { cwd: workspace, stdout: "pipe", stderr: "pipe" })
-  => { code: proc.exitCode, out: proc.stdout.toString() |> String.trim }
+  proc = Bun.spawnSync(["git"] |> appendAll(args), { cwd: workspace, stdout: "pipe", stderr: "pipe" })
+  => { code: proc.exitCode, out: proc.stdout.toString() |> trim }
 }
 
 prepareWorkspace = (workspace: String, branch: String): Effect.Effect<Boolean, Any, Any> => effect {
@@ -238,7 +238,7 @@ createFailedSession = (idle: IdleAgent, taskAssigned: TaskBlock, branchName: Str
 }
 
 handleSessionCompletion = (isDone: Boolean, idle: IdleAgent, taskAssigned: TaskBlock, branchName: String, workspacePath: String, currentSessions: Array<RunningSession>, store: BoardStore, baseBranch: String, mergeQueueOpt: Option.Option<Unknown>): Effect.Effect<Array<RunningSession>, Any, Any> => {
-  when (not isDone) => Effect.succeed(currentSessions |> Array.append(createFailedSession(idle, taskAssigned, branchName, workspacePath)))
+  when (not isDone) => Effect.succeed(currentSessions |> append(createFailedSession(idle, taskAssigned, branchName, workspacePath)))
 
   => effect {
     mergeReq: MergeRequest = {
@@ -250,7 +250,7 @@ handleSessionCompletion = (isDone: Boolean, idle: IdleAgent, taskAssigned: TaskB
     }
 
     landing <- landMergeRequest(mergeReq, baseBranch)
-    when (not landing.success) => currentSessions |> Array.append(createFailedSession(idle, taskAssigned, branchName, workspacePath))
+    when (not landing.success) => currentSessions |> append(createFailedSession(idle, taskAssigned, branchName, workspacePath))
     _archiveRes: Unknown = archiveTask(store, taskAssigned.id)
     _persistRes2: Unknown = persistBoardStoreSync(store)
     => currentSessions
@@ -265,7 +265,7 @@ processPairs = (pairList: Array<PairItem>, currentSessions: Array<RunningSession
     taskToAssign: { id: "", title: "", category: "", owner: "", branch: "", status: "", dependencies: [], objective: "", scope: "", acceptanceCriteria: "", rawBody: "" }
   }
   headItem = headOpt |> Option.getOrElse(() => emptyPair)
-  tail = pairList |> Array.drop(1)
+  tail = pairList |> drop(1)
   idle: IdleAgent = headItem.idle
   taskToAssign: TaskBlock = headItem.taskToAssign
 
@@ -352,10 +352,10 @@ getExtraTasks = (tasksDoc: TasksDocument, existingTasks: Array<TaskBlock>): Arra
   when (Option.isNone(Option.fromNullishOr(tasksDoc.sections))) => []
   sections: Array<MarkdownSection> = tasksDoc.sections
 
-  backlogSec = sections |> Array.findFirst((s: MarkdownSection) => {
+  backlogSec = sections |> findFirst((s: MarkdownSection) => {
     title = Option.getOrElse(Option.fromNullishOr(s.title), () => "")
-    low = title |> String.toLowerCase
-    => low |> String.includes("backlog")
+    low = title |> toLowerCase
+    => low |> includes("backlog")
   })
   when (Option.isNone(backlogSec)) => []
   emptySec: MarkdownSection = { title: "", name: "", tasks: [], rawContent: "" }
@@ -364,7 +364,7 @@ getExtraTasks = (tasksDoc: TasksDocument, existingTasks: Array<TaskBlock>): Arra
   when (Option.isNone(Option.fromNullishOr(sec.tasks))) => []
   tasks: Array<TaskBlock> = sec.tasks
 
-  => tasks |> Array.filter((t: TaskBlock) =>
+  => tasks |> filter((t: TaskBlock) =>
     not (existingTasks |> Array.some((b: TaskBlock) => b.id #= t.id))
   )
 }
@@ -382,11 +382,11 @@ isLaneActiveInDoc = (tasksDoc: TasksDocument, agentId: String): Boolean => {
   when (Option.isNone(Option.fromNullishOr(tasksDoc.sections))) => false
   sections: Array<MarkdownSection> = tasksDoc.sections
 
-  agentIdLow = agentId |> String.toLowerCase
-  laneSec = sections |> Array.findFirst((s: MarkdownSection) => {
+  agentIdLow = agentId |> toLowerCase
+  laneSec = sections |> findFirst((s: MarkdownSection) => {
     title = Option.getOrElse(Option.fromNullishOr(s.title), () => "")
-    low = title |> String.toLowerCase
-    => low |> String.includes(agentIdLow)
+    low = title |> toLowerCase
+    => low |> includes(agentIdLow)
   })
   when (Option.isNone(laneSec)) => false
   emptySec: MarkdownSection = { title: "", name: "", tasks: [], rawContent: "" }
@@ -397,7 +397,7 @@ isLaneActiveInDoc = (tasksDoc: TasksDocument, agentId: String): Boolean => {
 
   => tasks |> Array.some((t: TaskBlock) => {
     st = Option.getOrElse(Option.fromNullishOr(t.status), () => "")
-    stLow = st |> String.toLowerCase
+    stLow = st |> toLowerCase
     => stLow #= "in progress"
   })
 }
@@ -421,7 +421,7 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
   allBacklog = backlogTasks |> Array.appendAll(extraTasks)
 
   // 4. DAG dependency resolution: filter pending and compute unblocked tasks
-  activeTaskIds = state.activeSessions |> Array.map((s) => s.taskId)
+  activeTaskIds = state.activeSessions |> map((s) => s.taskId)
   pendingBacklog = allBacklog |> Array.filter((t) =>
     (not (completedIds |> Array.contains(t.id))) and (not (activeTaskIds |> Array.contains(t.id)))
   )
@@ -434,7 +434,7 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
   // 5. Detect idle lanes
   agentIndices = Array.range(1, devAgentCount)
   initIdle: Array<IdleAgent> = []
-  idleAgents = agentIndices |> Array.reduce(initIdle, (acc, i) => {
+  idleAgents = agentIndices |> reduce(initIdle, (acc, i) => {
     agentId = "Dev Agent " + i
     laneTitle = "Dev Agent " + i + " In Progress"
 
@@ -451,7 +451,7 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
 
   // 6. Assign ready tasks to idle lanes and execute sequentially
   pairs = zipIdleAndTasks(idleAgents, unblockedTasks)
-  runningSessions = state.activeSessions |> Array.filter((s) => s.status #= "Running")
+  runningSessions = state.activeSessions |> filter((s) => s.status #= "Running")
 
   assignRes <- processPairs(
     pairs,
