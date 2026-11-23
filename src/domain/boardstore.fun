@@ -119,7 +119,7 @@ export parseTaskBlockText = (rawBlock: String): TaskBlock => {
   cleanRx = RegExp("^\\[|\\]$", "g")
   splitRx = RegExp("\\s+", "g")
 
-  finalState = lines |> Array.reduce(initialState, (state, line) => {
+  finalState = lines |> reduce(initialState, (state, line) => {
     trimmed = line |> trim
     lowerTrimmed = trimmed |> toLowerCase
     colonIndexOpt = trimmed |> indexOf(":")
@@ -235,7 +235,7 @@ export parseTasksDocument = (content: String): TasksDocument => {
     currentSectionLines: []
   }
 
-  reduced = lines |> Array.reduce(initialState, (state, line) => {
+  reduced = lines |> reduce(initialState, (state, line) => {
     trimmed = line |> trim
     isSectionHeader = (trimmed |> startsWith("## ")) and not (trimmed |> startsWith("### "))
     secTitle = trimmed |> substring(2) |> trim
@@ -272,7 +272,7 @@ export parseBacklogTasks = (content: String): Array<TaskBlock> => {
     currentTaskLines: Option.none()
   }
 
-  reduced = lines |> Array.reduce(initialState, (state, line) => {
+  reduced = lines |> reduce(initialState, (state, line) => {
     trimmed = line |> trim
     isTaskHeader = trimmed |> startsWith("### ")
     flushedTasks = state.tasks |> Array.appendAll(state.currentTaskLines |> Option.map((taskLines) => [parseTaskBlockText(taskLines |> Array.join("\n"))]) |> Option.getOrElse(() => []))
@@ -294,7 +294,7 @@ export formatTaskBlock = (task: TaskBlock): String => {
   branchRx = RegExp("(^|\\n)Branch:\\s*[^\\n]+", "g")
 
   b1 = trimmedRaw |> replace(statusRx, "$1Status: " + task.status)
-  b2 = match (task.owner #! "") | true => b1 |> String.replace(ownerRx, "$1Owner: " + task.owner) | false => b1
+  b2 = match (task.owner #! "") | true => b1 |> replace(ownerRx, "$1Owner: " + task.owner) | false => b1
   b3 = match (task.branch #! "") | true => b2 |> String.replace(branchRx, "$1Branch: " + task.branch) | false => b2
   depsStr = match (task.dependencies.length > 0) | true => task.dependencies |> join(", ") | false => "none"
   titleStr = match (task.title #! "") | true => task.title | false => task.id
@@ -679,7 +679,7 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
   useArchive = not useTasks and Option.isSome(r2.maybeTask)
   taskFromTasks = r1.maybeTask |> getOrElse(() => emptyBlock)
   taskFromArchive = r2.maybeTask |> getOrElse(() => emptyBlock)
-  taskFromBacklog = foundBacklog |> Option.getOrElse(() => emptyBlock)
+  taskFromBacklog = foundBacklog |> getOrElse(() => emptyBlock)
   newTasksDoc = { ...store.tasksDoc, sections: r1.updatedSections, lanes: r1.updatedSections }
   newArchiveDoc = { ...store.archiveDoc, sections: r2.updatedSections, lanes: r2.updatedSections }
   hasBacklog = Option.isSome(foundBacklog)

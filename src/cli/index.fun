@@ -174,18 +174,18 @@ export formatDoctorTable = (report: Any): String => {
     | _ => []
   checkLines = rawChecks |> map((c: Any) => {
     cObj: Any = c
-    isOk = Option.fromNullishOr(Reflect.get(cObj, "ok")) |> Option.map((ok) => ok #= true) |> Option.getOrElse(() => false)
+    isOk = Option.fromNullishOr(Reflect.get(cObj, "ok")) |> map((ok) => ok #= true) |> getOrElse(() => false)
     status = statusTag(isOk)
-    isReq = Option.fromNullishOr(Reflect.get(cObj, "required")) |> Option.map((req) => req #= true) |> Option.getOrElse(() => false)
+    isReq = Option.fromNullishOr(Reflect.get(cObj, "required")) |> map((req) => req #= true) |> getOrElse(() => false)
     req = requiredTag(isReq)
     name = ("" + Reflect.get(cObj, "name")) |> padEnd(12)
     msg = "" + Reflect.get(cObj, "message")
     => status + "  | " + name + " | " + req + "      | " + msg
   })
-  isHealthy = Option.fromNullishOr(Reflect.get(repObj, "isHealthy")) |> Option.map((h) => h #= true) |> Option.getOrElse(() => false)
+  isHealthy = Option.fromNullishOr(Reflect.get(repObj, "isHealthy")) |> map((h) => h #= true) |> getOrElse(() => false)
   health = healthTag(isHealthy)
   allLines = lines |> appendAll(checkLines) |> append("--------------------------------------------------------------------------------") |> append("Overall Health: " + health)
-  => allLines |> Array.join("\n")
+  => allLines |> join("\n")
 }
 
 export getHelpMessage = (subcommand?: String): String => {
@@ -317,18 +317,18 @@ parseTokens = (subcommand: String, tokens: Array<String>, acc: RawParsedOptions)
   when (not isFlag) => parseTokens(subcommand, tail, { ...acc, positionals: acc.positionals |> append(head) })
 
   isDirCommand = subcommand #= "doctor" or subcommand #= "run" or subcommand #= "init" or subcommand #= "setup" or subcommand #= "groom" or subcommand #= "status" or subcommand #= "view"
-  numericArg = tail |> Array.get(0) |> Option.getOrElse(() => "0") |> Number.parse
-  agentCount = tail |> Array.get(0) |> Option.getOrElse(() => "2") |> Number.parse
-  when (isDirCommand and (head #= "--dir" or head #= "-d")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, dir: tail |> Array.get(0) })
-  when ((subcommand #= "run" or subcommand #= "view") and (head #= "--poll-interval" or head #= "pollInterval")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, pollIntervalMs: numericArg })
-  when (subcommand #= "run" and (head #= "--max-ticks" or head #= "maxTicks" or head #= "--iterations")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, maxTicks: numericArg })
+  numericArg = tail |> get(0) |> Option.getOrElse(() => "0") |> Number.parse
+  agentCount = tail |> get(0) |> Option.getOrElse(() => "2") |> Number.parse
+  when (isDirCommand and (head #= "--dir" or head #= "-d")) => parseTokens(subcommand, tail |> drop(1), { ...acc, dir: tail |> get(0) })
+  when ((subcommand #= "run" or subcommand #= "view") and (head #= "--poll-interval" or head #= "pollInterval")) => parseTokens(subcommand, tail |> drop(1), { ...acc, pollIntervalMs: numericArg })
+  when (subcommand #= "run" and (head #= "--max-ticks" or head #= "maxTicks" or head #= "--iterations")) => parseTokens(subcommand, tail |> drop(1), { ...acc, maxTicks: numericArg })
   when (subcommand #= "run" and head #= "--detach") => parseTokens(subcommand, tail, { ...acc, detach: true })
-  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--repo" or head #= "-r")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, repoUrl: tail |> Array.get(0) })
-  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--agents" or head #= "-a")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, agents: agentCount })
-  when ((subcommand #= "init" or subcommand #= "setup") and head #= "--origin") => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, originUrl: tail |> Array.get(0) })
-  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--branch" or head #= "--base-branch")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, baseBranch: tail |> Array.get(0) })
-  when ((subcommand #= "init" or subcommand #= "setup") and head #= "--provider") => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, provider: tail |> Array.get(0) })
-  when (subcommand #= "groom" and (head #= "--model" or head #= "-m")) => parseTokens(subcommand, tail |> Array.drop(1), { ...acc, model: tail |> Array.get(0) })
+  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--repo" or head #= "-r")) => parseTokens(subcommand, tail |> drop(1), { ...acc, repoUrl: tail |> get(0) })
+  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--agents" or head #= "-a")) => parseTokens(subcommand, tail |> drop(1), { ...acc, agents: agentCount })
+  when ((subcommand #= "init" or subcommand #= "setup") and head #= "--origin") => parseTokens(subcommand, tail |> drop(1), { ...acc, originUrl: tail |> get(0) })
+  when ((subcommand #= "init" or subcommand #= "setup") and (head #= "--branch" or head #= "--base-branch")) => parseTokens(subcommand, tail |> drop(1), { ...acc, baseBranch: tail |> get(0) })
+  when ((subcommand #= "init" or subcommand #= "setup") and head #= "--provider") => parseTokens(subcommand, tail |> drop(1), { ...acc, provider: tail |> get(0) })
+  when (subcommand #= "groom" and (head #= "--model" or head #= "-m")) => parseTokens(subcommand, tail |> drop(1), { ...acc, model: tail |> get(0) })
   when ((head #= "--help" or head #= "-h") and isDirCommand) => parseTokens(subcommand, tail, { ...acc, help: true })
   => parseTokens(subcommand, tail, { ...acc, unknownOpt: Option.some(head) })
 
@@ -359,7 +359,7 @@ export parseCliArgs = (argv?: Array<String>) => {
   when (first #= "--help" or first #= "-h") => { command: "help", type: "help" }
 
   subArgs = args |> drop(1)
-  subHelp = subArgs |> Array.get(0)
+  subHelp = subArgs |> get(0)
   when (first #= "help" and Option.isSome(subHelp)) => {
     command: "help",
     type: "help",
@@ -421,9 +421,9 @@ export parseCliArgs = (argv?: Array<String>) => {
 parseBoardCommand = (args: Array<String>) => {
   action = args |> get(0) |> Option.getOrElse(() => "")
   rest = args |> drop(1)
-  id = rest |> Array.get(0) |> Option.getOrElse(() => "")
-  status = rest |> Array.get(1) |> Option.getOrElse(() => "")
-  dirOpt = rest |> Array.findFirstIndex((v) => v #= "--dir") |> Option.flatMap((i) => rest |> Array.get(i + 1))
+  id = rest |> get(0) |> Option.getOrElse(() => "")
+  status = rest |> get(1) |> Option.getOrElse(() => "")
+  dirOpt = rest |> findFirstIndex((v) => v #= "--dir") |> Option.flatMap((i) => rest |> get(i + 1))
   dir = Option.getOrElse(dirOpt, () => DEFAULT_BOARD_DIR)
   => { command: "board", type: "board", action: action, id: id, status: status, dir: dir }
 }
@@ -437,10 +437,10 @@ parseRecoverCommand = (args: Array<String>) => {
 parseCoordinationCommand = (args: Array<String>) => {
   action = args |> get(0) |> Option.getOrElse(() => "")
   rest = args |> drop(1)
-  statusAt = rest |> Array.findFirstIndex((v) => v #= "--status")
-  summaryAt = rest |> Array.findFirstIndex((v) => v #= "--summary")
-  status = statusAt |> Option.flatMap((i) => rest |> Array.get(i + 1)) |> Option.getOrElse(() => "")
-  summary = summaryAt |> Option.flatMap((i) => rest |> Array.get(i + 1)) |> Option.getOrElse(() => "")
+  statusAt = rest |> findFirstIndex((v) => v #= "--status")
+  summaryAt = rest |> findFirstIndex((v) => v #= "--summary")
+  status = statusAt |> Option.flatMap((i) => rest |> get(i + 1)) |> getOrElse(() => "")
+  summary = summaryAt |> Option.flatMap((i) => rest |> get(i + 1)) |> getOrElse(() => "")
   when (action #! "report") => { command: "invalid", type: "invalid", error: "Usage: slopboss2 coordination report --status <acted|idle|blocked> --summary <text>" }
   when (status #= "" or summary #= "") => { command: "invalid", type: "invalid", error: "coordination report requires --status and --summary" }
   => { command: "coordination", type: "coordination", status: status, summary: summary }
@@ -463,7 +463,7 @@ export printStatus = (boardDir: String) => effect {
   cfg <- readRuntimeConfig(boardDir)
   _ <- Console.log("=== SLOPBOSS2 BOARD STATUS ===")
   _ <- Console.log("Board: " + boardDir)
-  _ <- Console.log(lanes |> Array.join("\n"))
+  _ <- Console.log(lanes |> join("\n"))
   _ <- Console.log(controller)
   _ <- Console.log("Fleet: " + cfg.devAgentCount + " dev agents configured, provider " + cfg.provider + ", base branch " + cfg.baseBranch + ".")
   => true
@@ -574,7 +574,7 @@ runReconcilerForeground = (dir: String, rawOptsObj: Any, maxTicks?: Number, poll
   iterVal = Option.fromNullishOr(maxTicks) |> orElse(() => Option.fromNullishOr(rawOptsIter)) |> flatMap((m) => Number.parse("" + m)) |> getOrElse(() => 0)
 
   rawMock: Any = Reflect.get(rawOptsObj, "mockRunner")
-  mockOpt = Option.fromNullishOr(rawMock) |> Option.map((m) => m #= true)
+  mockOpt = Option.fromNullishOr(rawMock) |> map((m) => m #= true)
 
   runnerOpt: Option<Any> = Option.fromNullishOr(Reflect.get(rawOptsObj, "runnerFn"))
 
@@ -656,7 +656,7 @@ handleHelp = (cmd: Any) => effect {
   obj: Any = cmd
   rawCmd = "" + Reflect.get(obj, "command")
   subStr = match rawCmd #= "help"
-    | true => Option.fromNullishOr(Reflect.get(obj, "subcommand")) |> Option.map((s) => "" + s) |> Option.getOrUndefined
+    | true => Option.fromNullishOr(Reflect.get(obj, "subcommand")) |> map((s) => "" + s) |> getOrUndefined
     | false => rawCmd
   helpMsg = getHelpMessage(subStr)
   _ <- Console.log(helpMsg)
@@ -669,7 +669,7 @@ handleInvalid = (cmd: Any) => effect {
   errText = Option.fromNullishOr(errRaw) |> map((e) => "" + e) |> getOrElse(() => "Unknown error")
   errMsg = "Error: " + errText
   _ <- Console.error(errMsg)
-  subOpt = Option.fromNullishOr(Reflect.get(obj, "subcommand")) |> Option.map((s) => "" + s)
+  subOpt = Option.fromNullishOr(Reflect.get(obj, "subcommand")) |> map((s) => "" + s)
   _ <- Console.log(getHelpMessage(Option.getOrUndefined(subOpt)))
   _ <- Effect.fail(CliCommandError({ message: errText }))
   => { help: false, output: errMsg }
@@ -678,7 +678,7 @@ handleInvalid = (cmd: Any) => effect {
 runViewCommandWithOpts = (cmd: Any, options?: Any) => {
   obj: Any = cmd
   rawOpts: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
-  dirStr = Option.fromNullishOr(Reflect.get(obj, "dir")) |> Option.map((d) => "" + d) |> Option.getOrElse(() => DEFAULT_BOARD_DIR)
+  dirStr = Option.fromNullishOr(Reflect.get(obj, "dir")) |> map((d) => "" + d) |> getOrElse(() => DEFAULT_BOARD_DIR)
   rawCmdPoll: Option<Any> = Option.fromNullishOr(Reflect.get(obj, "pollIntervalMs"))
   rawOptsPoll: Option<Any> = Option.fromNullishOr(Reflect.get(rawOpts, "pollIntervalMs"))
   pollValNum = rawCmdPoll |> orElse(() => rawOptsPoll) |> flatMap((p) => Number.parse("" + p)) |> getOrElse(() => 1000)
@@ -698,20 +698,20 @@ resolveDispatchAction = (rawCmd: String, rawHelp: Boolean): String => {
 export dispatchCli = (cmd: Any, options?: Any) => {
   obj: Any = cmd
   rawCmd = "" + Reflect.get(obj, "command")
-  rawHelp = Option.fromNullishOr(Reflect.get(obj, "help")) |> Option.map((h) => h #= true) |> Option.getOrElse(() => false)
+  rawHelp = Option.fromNullishOr(Reflect.get(obj, "help")) |> map((h) => h #= true) |> getOrElse(() => false)
   dispatchAction = resolveDispatchAction(rawCmd, rawHelp)
 
   rawOptions: Any = Option.getOrElse(Option.fromNullishOr(options), fallbackViewOpts)
-  dirStr = Option.fromNullishOr(Reflect.get(obj, "dir")) |> Option.map((d) => "" + d) |> Option.getOrElse(() => DEFAULT_BOARD_DIR)
-  modelOpt = Option.fromNullishOr(Reflect.get(obj, "model")) |> Option.map((m) => "" + m)
-  rawDetach = Option.fromNullishOr(Reflect.get(obj, "detach")) |> Option.map((d) => d #= true) |> Option.getOrElse(() => false)
-  maxTicksOpt = Option.fromNullishOr(Reflect.get(obj, "maxTicks")) |> Option.flatMap((m) => Number.parse("" + m))
-  pollOpt = Option.fromNullishOr(Reflect.get(obj, "pollIntervalMs")) |> Option.flatMap((p) => Number.parse("" + p))
-  repoStr = Option.fromNullishOr(Reflect.get(obj, "repoUrl")) |> Option.map((r) => "" + r) |> Option.getOrElse(() => "https://github.com/de-angelov/slopboss2.git")
-  agentsNum = Option.fromNullishOr(Reflect.get(obj, "agents")) |> Option.flatMap((a) => Number.parse("" + a)) |> Option.getOrElse(() => 2)
-  originUrl = Option.fromNullishOr(Reflect.get(obj, "originUrl")) |> Option.map((v) => "" + v) |> Option.getOrElse(() => "")
-  baseBranch = Option.fromNullishOr(Reflect.get(obj, "baseBranch")) |> Option.map((v) => "" + v) |> Option.getOrElse(() => "main")
-  provider = Option.fromNullishOr(Reflect.get(obj, "provider")) |> Option.map((v) => "" + v) |> Option.getOrElse(() => "agy")
+  dirStr = Option.fromNullishOr(Reflect.get(obj, "dir")) |> map((d) => "" + d) |> getOrElse(() => DEFAULT_BOARD_DIR)
+  modelOpt = Option.fromNullishOr(Reflect.get(obj, "model")) |> map((m) => "" + m)
+  rawDetach = Option.fromNullishOr(Reflect.get(obj, "detach")) |> map((d) => d #= true) |> getOrElse(() => false)
+  maxTicksOpt = Option.fromNullishOr(Reflect.get(obj, "maxTicks")) |> flatMap((m) => Number.parse("" + m))
+  pollOpt = Option.fromNullishOr(Reflect.get(obj, "pollIntervalMs")) |> flatMap((p) => Number.parse("" + p))
+  repoStr = Option.fromNullishOr(Reflect.get(obj, "repoUrl")) |> map((r) => "" + r) |> getOrElse(() => "https://github.com/de-angelov/slopboss2.git")
+  agentsNum = Option.fromNullishOr(Reflect.get(obj, "agents")) |> flatMap((a) => Number.parse("" + a)) |> getOrElse(() => 2)
+  originUrl = Option.fromNullishOr(Reflect.get(obj, "originUrl")) |> map((v) => "" + v) |> getOrElse(() => "")
+  baseBranch = Option.fromNullishOr(Reflect.get(obj, "baseBranch")) |> map((v) => "" + v) |> getOrElse(() => "main")
+  provider = Option.fromNullishOr(Reflect.get(obj, "provider")) |> map((v) => "" + v) |> getOrElse(() => "agy")
 
   when (dispatchAction #= "board") => dispatchBoardCommand(obj, dirStr)
   when (dispatchAction #= "recover") => acquireBoardLock(dirStr).pipe(Effect.scoped)
@@ -754,7 +754,7 @@ boardGet = (dir: String, id: String) => effect {
 
 boardList = (dir: String) => effect {
   tasks = loadBoardStoreSync(dir).tasksDoc.sections |> Array.flatMap((section) => section.tasks)
-  _ <- Console.log(tasks |> Array.map((t) => t.id + "  " + t.title + " (" + t.status + ")") |> Array.join("\n"))
+  _ <- Console.log(tasks |> map((t) => t.id + "  " + t.title + " (" + t.status + ")") |> join("\n"))
   => tasks
 }
 

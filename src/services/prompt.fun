@@ -158,7 +158,7 @@ export buildDevAgentPromptWorkflow = (boardDir: String, task: TaskBlock, agentNa
   ]
 
   allSections = baseSections |> appendAll(techSections) |> appendAll(tailSections)
-  => allSections |> Array.join("\n")
+  => allSections |> join("\n")
 }
 
 export buildDevAgentPromptEffect = (boardDir: String, task: TaskBlock, agentName: String) => {
@@ -212,7 +212,7 @@ formatActiveTasks = (activeTasks: Array<TaskBlock>) => {
     ]
     => lines |> join("\n")
   })
-  => taskLines |> Array.join("\n\n")
+  => taskLines |> join("\n\n")
 }
 
 export buildTeamLeadPromptWorkflow = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) => effect {

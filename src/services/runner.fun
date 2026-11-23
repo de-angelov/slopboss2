@@ -42,8 +42,8 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
   outText = rawOut
   rawCode <- js proc.exited
   code = rawCode
-  lines = outText |> String.split("\n")
-  events = lines |> map(parseAgyLine) |> Array.getSomes
+  lines = outText |> split("\n")
+  events = lines |> map(parseAgyLine) |> getSomes
   usageLimited = events |> Array.some((e) => match e
     | UsageLimitReached => true
     | _ => false
@@ -54,7 +54,7 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
   )
   => {
     exitCode: code,
-    totalTokens: lines |> Array.length,
+    totalTokens: lines |> length,
     completed: isCompleted and not usageLimited and code #= 0
   }
 }

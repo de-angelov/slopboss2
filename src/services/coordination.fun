@@ -68,7 +68,7 @@ releaseOwnLock = (fsService: FileSystem.FileSystem, lockPath: String, currentPid
     | true => effect {
       rawOption <- fsService.readFileString(lockPath) |> option
       parsed = rawOption |> flatMap(tryParseLockFile)
-      lock = parsed |> Option.getOrElse(() => ({ pid: 0, timestamp: 0 }))
+      lock = parsed |> getOrElse(() => ({ pid: 0, timestamp: 0 }))
       _ <- removeLockIfOwned(fsService, lockPath, parsed, lock, currentPid, currentTime)
       => Unit
     }
