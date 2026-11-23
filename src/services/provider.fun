@@ -15,16 +15,16 @@ export schema AgyEvent =
 export buildAgyCommand = (model: Option<String>) =>
   baseArgs = ["--output-format", "stream-json", "--dangerously-skip-permissions"]
   args = match model
-    | Some(m) => baseArgs |> appendAll(["--model", m])
+    | Some(m) => baseArgs |> Array.appendAll(["--model", m])
     | None => baseArgs
-  => ["agy"] |> appendAll(args)
+  => ["agy"] |> Array.appendAll(args)
 
 export buildInteractiveCommand = (model: Option<String>, prompt: String) =>
   baseArgs = ["--dangerously-skip-permissions", "-i", prompt]
   args = match model
-    | Some(m) => baseArgs |> appendAll(["--model", m])
+    | Some(m) => baseArgs |> Array.appendAll(["--model", m])
     | None => baseArgs
-  => ["agy"] |> appendAll(args)
+  => ["agy"] |> Array.appendAll(args)
 
 // Completion contract for the configured agy stream-json provider: accept a
 // valid JSON event with done: true or status: "completed". Assistant text and

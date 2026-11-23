@@ -33,16 +33,16 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
   proc <- spawnScopedProcess(cmd, cwd)
   _ = match stdinText
     | Some(text) =>
-      proc.stdin.write(text)
-      proc.stdin.flush()
-      proc.stdin.end()
+      written = proc.stdin.write(text)
+      closed = proc.stdin.end()
+      => closed
     | None =>
       proc.stdin.end()
   rawOut <- js Bun.readableStreamToText(proc.stdout)
-  outText = rawOut
+  outText = rawOut |> Option.flatMap(Schema.decodeUnknownOption(Schema.String)) |> Option.getOrElse(() => "")
   rawCode <- js proc.exited
-  code = rawCode
-  lines = outText |> split("\n")
+  code = rawCode |> Option.flatMap(Schema.decodeUnknownOption(Schema.Number)) |> Option.getOrElse(() => 1)
+  lines = outText |> String.split("\n")
   events = lines |> map(parseAgyLine) |> getSomes
   usageLimited = events |> Array.some((e) => match e
     | UsageLimitReached => true
@@ -61,7 +61,7 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
 
 export runConfiguredAgentSession = (prompt: String, cwd: String, provider: String = "agy") => {
   command = buildAgyCommand(Option.none())
-  selected = [provider] |> appendAll(command |> Array.drop(1))
+  selected = [provider] |> Array.appendAll(command |> Array.drop(1))
   => runAgentSession(selected, cwd, Option.some(prompt))
 }
 

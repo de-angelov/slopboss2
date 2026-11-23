@@ -386,7 +386,7 @@ export provisionWorkspacesWorkflow = (boardDir: String, repoUrl: String, devAgen
     => Option.none()
   })
 
-  created = tlCreated |> appendAll(agentResults |> Array.getSomes)
+  created = tlCreated |> Array.appendAll(agentResults |> Array.getSomes)
   => created
 }
 
@@ -449,7 +449,7 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
   }
 
   agentNames = Array.range(1, count) |> map((i) => "repo-agent-" + i)
-  workspaceNames = ["repo-tl"] |> appendAll(agentNames)
+  workspaceNames = ["repo-tl"] |> Array.appendAll(agentNames)
 
   checkResults <- workspaceNames |> Effect.forEach((name) => effect {
     wsPath = path.join(workspacesDir, name)
@@ -500,7 +500,7 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
       | true => [name + " has uncommitted changes"]
       | false => []
 
-    allFails = branchFail |> appendAll(cleanFail)
+    allFails = branchFail |> Array.appendAll(cleanFail)
 
     => {
       info: {

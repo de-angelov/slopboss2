@@ -28,7 +28,7 @@ export topologicalSort = (nodes: Array<TaskNode>) =>
     )
     when (readyNodes.length #= 0) => { order: currentOrder, hasCycle: true, cycleNodes: remaining |> map((n) => n.id) }
     readyIds = readyNodes |> map((n) => n.id)
-    nextOrder = currentOrder |> appendAll(readyIds)
+    nextOrder = currentOrder |> Array.appendAll(readyIds)
     nextRemaining = remaining |> filter((n) => not (readyIds |> Array.contains(n.id)))
     => resolveStep(nextOrder, nextRemaining)
 

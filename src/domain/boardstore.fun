@@ -314,9 +314,9 @@ export formatTaskBlock = (task: TaskBlock): String => {
           "Blocking tasks: none"
         ]
 
-  p1 = match (task.objective #! "") | true => baseParts |> appendAll(["", "Objective:", task.objective]) | false => baseParts
-  p2 = match (task.scope #! "") | true => p1 |> appendAll(["", "Scope:", task.scope]) | false => p1
-  p3 = match (task.acceptanceCriteria #! "") | true => p2 |> appendAll(["", "Acceptance Criteria:", task.acceptanceCriteria]) | false => p2
+  p1 = match (task.objective #! "") | true => baseParts |> Array.appendAll(["", "Objective:", task.objective]) | false => baseParts
+  p2 = match (task.scope #! "") | true => p1 |> Array.appendAll(["", "Scope:", task.scope]) | false => p1
+  p3 = match (task.acceptanceCriteria #! "") | true => p2 |> Array.appendAll(["", "Acceptance Criteria:", task.acceptanceCriteria]) | false => p2
   generated = p3 |> join("\n")
   => match (trimmedRaw #! "") | true => b3 | false => generated
 }
@@ -411,7 +411,7 @@ addTaskToSections = (sections: Array<MarkdownSection>, targetTitle: String, task
     | Some(idx) =>
         sections |> map((sec: MarkdownSection, i: Number) => {
           newTasks = match prepend
-            | true => [task] |> appendAll(sec.tasks)
+            | true => [task] |> Array.appendAll(sec.tasks)
             | false => sec.tasks |> append(task)
           when (i #= idx) => { ...sec, tasks: newTasks, rawContent: "" }
           => sec

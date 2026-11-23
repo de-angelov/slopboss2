@@ -144,13 +144,13 @@ getContentCompletedIds = (archiveContent: String): Array<String> => {
     => acc |> Array.append("" + rawId)
   })
 
-  => ids1 |> appendAll(ids2)
+  => ids1 |> Array.appendAll(ids2)
 }
 
 getCompletedTaskIds = (store: BoardStore): Array<String> => {
   docIds = getDocCompletedIds(store.archiveDoc)
   contentIds = getContentCompletedIds(store.archiveContent)
-  allIds = docIds |> appendAll(contentIds)
+  allIds = docIds |> Array.appendAll(contentIds)
   => Array.dedupe(allIds)
 }
 
@@ -181,7 +181,7 @@ resolveBranchName = (rawBranch: Option.Option<String>, agentIndex: Number, taskI
 }
 
 runGitInWorkspace = (args: Array<String>, workspace: String) => {
-  proc = Bun.spawnSync(["git"] |> appendAll(args), { cwd: workspace, stdout: "pipe", stderr: "pipe" })
+  proc = Bun.spawnSync(["git"] |> Array.appendAll(args), { cwd: workspace, stdout: "pipe", stderr: "pipe" })
   => { code: proc.exitCode, out: proc.stdout.toString() |> trim }
 }
 

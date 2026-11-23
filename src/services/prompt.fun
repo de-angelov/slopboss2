@@ -157,7 +157,7 @@ export buildDevAgentPromptWorkflow = (boardDir: String, task: TaskBlock, agentNa
     taskAcceptanceCriteria
   ]
 
-  allSections = baseSections |> appendAll(techSections) |> appendAll(tailSections)
+  allSections = baseSections |> Array.appendAll(techSections) |> Array.appendAll(tailSections)
   => allSections |> join("\n")
 }
 

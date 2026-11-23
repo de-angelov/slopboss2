@@ -184,7 +184,7 @@ export formatDoctorTable = (report: Any): String => {
   })
   isHealthy = Option.fromNullishOr(Reflect.get(repObj, "isHealthy")) |> map((h) => h #= true) |> getOrElse(() => false)
   health = healthTag(isHealthy)
-  allLines = lines |> appendAll(checkLines) |> append("--------------------------------------------------------------------------------") |> append("Overall Health: " + health)
+  allLines = lines |> Array.appendAll(checkLines) |> Array.append("--------------------------------------------------------------------------------") |> Array.append("Overall Health: " + health)
   => allLines |> join("\n")
 }
 

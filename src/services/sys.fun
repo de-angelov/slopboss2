@@ -76,7 +76,7 @@ export schema GitSubprocessResult = {
 }
 
 export runGitCommandSync = (args: Array<String>, cwd: String = ""): GitSubprocessResult => {
-  gitCmd = ["git"] |> appendAll(args)
+  gitCmd = ["git"] |> Array.appendAll(args)
   authorName = match Option.fromNullishOr(process.env.GIT_AUTHOR_NAME)
     | Some(name) => name
     | None => "Slopboss"
