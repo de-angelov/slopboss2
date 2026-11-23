@@ -127,14 +127,14 @@ export parseTaskBlockText = (rawBlock: String): TaskBlock => {
       | Some(i) => trimmed |> substring(i + 1) |> trim
       | None => ""
 
-    isOther = (lowerTrimmed |> String.startsWith("blocking tasks:")) or (lowerTrimmed |> String.startsWith("completed:")) or (lowerTrimmed |> String.startsWith("blocked by:")) or (lowerTrimmed |> String.startsWith("progress notes:")) or (lowerTrimmed |> String.startsWith("verification evidence:"))
+    isOther = (lowerTrimmed |> startsWith("blocking tasks:")) or (lowerTrimmed |> startsWith("completed:")) or (lowerTrimmed |> startsWith("blocked by:")) or (lowerTrimmed |> startsWith("progress notes:")) or (lowerTrimmed |> startsWith("verification evidence:"))
 
     t = trimmed |> substring(3) |> trim
     deps = afterColon |> split(",") |> map((d: String) => d |> trim |> replace(cleanRx, "")) |> filter((d: String) => d #! "")
     linesValue = match (afterColon #= "")
       | true => []
       | false => [afterColon]
-    normalizedDeps = match ((afterColon |> String.toLowerCase) #= "none" or afterColon #= "")
+    normalizedDeps = match ((afterColon |> toLowerCase) #= "none" or afterColon #= "")
       | true => []
       | false => deps
     when (trimmed |> startsWith("###")) => { ...state, title: t }
@@ -237,7 +237,7 @@ export parseTasksDocument = (content: String): TasksDocument => {
 
   reduced = lines |> Array.reduce(initialState, (state, line) => {
     trimmed = line |> trim
-    isSectionHeader = (trimmed |> String.startsWith("## ")) and not (trimmed |> String.startsWith("### "))
+    isSectionHeader = (trimmed |> startsWith("## ")) and not (trimmed |> startsWith("### "))
     secTitle = trimmed |> substring(2) |> trim
     flushedSec = parseSectionLines(state.currentSectionTitle, state.currentSectionLines)
     when (isSectionHeader and not state.seenFirstSection) => { ...state, seenFirstSection: true, currentSectionTitle: secTitle, currentSectionLines: [] }
@@ -325,7 +325,7 @@ formatSection = (section: MarkdownSection): String => {
   raw = section.rawContent |> trim
   emptyTasksPart = match (raw #! "") | true => raw + "\n" | false => "*Idle - Ready for next backlog assignment.*\n"
   tasksPart = match (section.tasks.length > 0)
-    | true => (section.tasks |> Array.map(formatTaskBlock) |> Array.join("\n\n")) + "\n"
+    | true => (section.tasks |> map(formatTaskBlock) |> join("\n\n")) + "\n"
     | false => emptyTasksPart
   => "## " + section.title + "\n\n" + tasksPart
 }
@@ -336,7 +336,7 @@ formatSectionsOnly = (sections: Array<MarkdownSection>, maybeHeader: Option<Stri
     | Some(h) => h
     | None => headerDefault
   sectionsPart = sections |> map(formatSection) |> join("\n")
-  => (header |> String.trim) + "\n\n" + sectionsPart
+  => (header |> trim) + "\n\n" + sectionsPart
 }
 
 formatDocumentOnly = (doc: TasksDocument): String => {
@@ -346,7 +346,7 @@ formatDocumentOnly = (doc: TasksDocument): String => {
     | false => headerDefault
   sections = chooseDocumentSections(doc)
   sectionsPart = sections |> map(formatSection) |> join("\n")
-  => (header |> String.trim) + "\n\n" + sectionsPart
+  => (header |> trim) + "\n\n" + sectionsPart
 }
 
 export formatTasksDocument = (docOrSections: Any, maybeHeader?: String): String => {
@@ -405,7 +405,7 @@ updateStatusInSections = (sections: Array<MarkdownSection>, taskId: String, newS
 
 addTaskToSections = (sections: Array<MarkdownSection>, targetTitle: String, task: TaskBlock, prepend: Boolean): Array<MarkdownSection> => {
   targetLower = targetTitle |> toLowerCase
-  targetIndex = sections |> findFirstIndex((s: MarkdownSection) => (s.title |> String.toLowerCase) #= targetLower)
+  targetIndex = sections |> findFirstIndex((s: MarkdownSection) => (s.title |> toLowerCase) #= targetLower)
 
   updatedSections = match targetIndex
     | Some(idx) =>
@@ -633,14 +633,14 @@ moveTaskInTasksDocument = (doc: TasksDocument, taskId: String, targetSectionTitl
   emptyBlock = { id: "", title: "", category: "", owner: "", branch: "", status: "", dependencies: [], objective: "", scope: "", acceptanceCriteria: "", rawBody: "" }
   foundTask = r.maybeTask |> Option.getOrElse(() => emptyBlock)
   lowerTarget = targetSectionTitle |> toLowerCase
-  isArchive = (lowerTarget |> String.includes("archive")) or (lowerTarget |> String.includes("done"))
+  isArchive = (lowerTarget |> includes("archive")) or (lowerTarget |> includes("done"))
 
   statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
   statusDoneRx = RegExp("(^|\\n)Status:\\s*Done", "i")
   ownerRx = RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
   today = DateTime.formatIsoDateUtc(DateTime.nowUnsafe())
   rawDone = foundTask.rawBody |> String.replace(statusRx, "$1Status: Done")
-  doneNeedsDate = (rawDone #! "") and not (rawDone |> String.includes("Completed:"))
+  doneNeedsDate = (rawDone #! "") and not (rawDone |> includes("Completed:"))
   rawDoneFinal = match doneNeedsDate
     | true => rawDone |> String.replace(statusDoneRx, "$1Status: Done\nCompleted: " + today)
     | false => rawDone
@@ -683,7 +683,7 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
   newTasksDoc = { ...store.tasksDoc, sections: r1.updatedSections, lanes: r1.updatedSections }
   newArchiveDoc = { ...store.archiveDoc, sections: r2.updatedSections, lanes: r2.updatedSections }
   hasBacklog = Option.isSome(foundBacklog)
-  newBacklog = (store.backlogContent |> String.replace(taskFromBacklog.rawBody, "") |> String.trim) + "\n"
+  newBacklog = (store.backlogContent |> replace(taskFromBacklog.rawBody, "") |> trim) + "\n"
   fromTasks = match useTasks
     | true => Option.some({ store: { ...store, tasksDoc: newTasksDoc }, task: Option.some(taskFromTasks) })
     | false => Option.none()
@@ -701,14 +701,14 @@ moveTaskInBoardStore = (store: BoardStore, taskId: String, targetSectionTitle: S
   foundTask = taskAndStore.task |> Option.getOrElse(() => emptyBlock)
   curStore = taskAndStore.store
   lowerTarget = targetSectionTitle |> toLowerCase
-  isArchive = (lowerTarget |> String.includes("archive")) or (lowerTarget |> String.includes("done"))
+  isArchive = (lowerTarget |> includes("archive")) or (lowerTarget |> includes("done"))
 
   statusRx = RegExp("(^|\\n)Status:\\s*[^\\n]+", "g")
   statusDoneRx = RegExp("(^|\\n)Status:\\s*Done", "i")
   ownerRx = RegExp("(^|\\n)Owner:\\s*[^\\n]+", "g")
   today = DateTime.formatIsoDateUtc(DateTime.nowUnsafe())
   rawDone = foundTask.rawBody |> String.replace(statusRx, "$1Status: Done")
-  doneNeedsDate = (rawDone #! "") and not (rawDone |> String.includes("Completed:"))
+  doneNeedsDate = (rawDone #! "") and not (rawDone |> includes("Completed:"))
   rawDoneFinal = match doneNeedsDate
     | true => rawDone |> String.replace(statusDoneRx, "$1Status: Done\nCompleted: " + today)
     | false => rawDone

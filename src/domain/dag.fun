@@ -18,7 +18,7 @@ export findReadyTasks = (nodes: Array<TaskNode>, completedIds: Array<String>) =>
     when (isCompleted) => false
     => allDepsDone
   )
-  => ready |> Array.map((n) => n.id)
+  => ready |> map((n) => n.id)
 
 export topologicalSort = (nodes: Array<TaskNode>) =>
   resolveStep = (currentOrder: Array<String>, remaining: Array<TaskNode>): DagSortResult =>
@@ -27,7 +27,7 @@ export topologicalSort = (nodes: Array<TaskNode>) =>
       node.dependsOn |> Array.every((dep) => currentOrder |> Array.contains(dep))
     )
     when (readyNodes.length #= 0) => { order: currentOrder, hasCycle: true, cycleNodes: remaining |> map((n) => n.id) }
-    readyIds = readyNodes |> Array.map((n) => n.id)
+    readyIds = readyNodes |> map((n) => n.id)
     nextOrder = currentOrder |> appendAll(readyIds)
     nextRemaining = remaining |> filter((n) => not (readyIds |> Array.contains(n.id)))
     => resolveStep(nextOrder, nextRemaining)

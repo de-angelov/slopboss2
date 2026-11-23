@@ -56,7 +56,7 @@ getUpdatedAgents = (tickCount: Number, currentAgents: Array<AgentState>): Array<
 }
 
 reportAgentStatuses = (agents: Array<AgentState>) => {
-  when ((agents |> Array.length) #= 0) => Console.log("  No agents active")
+  when ((agents |> length) #= 0) => Console.log("  No agents active")
   => Effect.forEach(agents, (a: AgentState) => Console.log("  " + a.id + ": " + a.status))
 }
 

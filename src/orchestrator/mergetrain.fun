@@ -62,7 +62,7 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
   // caller persisted board archival. Treat the task-specific landing commit as
   // evidence that this request already landed, so retrying is idempotent.
   landedRes = git(["log", "refs/remotes/origin/" + baseBranch, "--format=%H", "--grep=^" + req.taskId + ": landed$"], tempDir)
-  when (landedRes.exitCode #= 0 and not (landedRes.stdout |> String.trim |> String.isEmpty)) => {
+  when (landedRes.exitCode #= 0 and not (landedRes.stdout |> trim |> isEmpty)) => {
     taskId: req.taskId, success: true, commitHash: Option.some(landedRes.stdout |> trim |> split("\n") |> head |> getOrElse(() => "")), error: Option.none()
   }
   checkoutRes = git(["checkout", "--quiet", "-B", baseBranch, "refs/remotes/origin/" + baseBranch], tempDir)

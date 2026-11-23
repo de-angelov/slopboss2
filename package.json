@@ -14,10 +14,9 @@
     "start": "bun run src/cli/bin.fun"
   },
   "dependencies": {
-    "@effect/platform": "^0.97.2",
     "@effect/platform-bun": "^4.1.4",
     "effect": "^4.1.2",
-    "funscript": "file:/home/dangelov/funscript/funscript-0.2.4.tgz"
+    "funscript": "file:../funscript"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

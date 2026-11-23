@@ -515,7 +515,7 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
     }
   })
 
-  workspaces = checkResults |> Array.map((r) => r.info)
+  workspaces = checkResults |> map((r) => r.info)
   failures = checkResults |> Array.flatMap((r) => r.failures)
 
   isOk = failures.length #= 0

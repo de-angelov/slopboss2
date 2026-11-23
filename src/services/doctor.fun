@@ -203,14 +203,14 @@ export checkBoardDirectoryWorkflow = (boardDir: String) => effect {
   when (missingFiles.length > 0) => {
     name: "board",
     ok: false,
-    message: "Missing required board files in " + boardDir + ": " + (missingFiles |> Array.join(", ")),
+    message: "Missing required board files in " + boardDir + ": " + (missingFiles |> join(", ")),
     required: true
   }
 
   => {
     name: "board",
     ok: true,
-    message: "Board directory contains all required files (" + (requiredFiles |> Array.join(", ")) + ")",
+    message: "Board directory contains all required files (" + (requiredFiles |> join(", ")) + ")",
     required: true
   }
 }

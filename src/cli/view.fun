@@ -48,7 +48,7 @@ readLanesAndStoreLogs = (boardDir: String) => {
         laneId = resolveLaneId(sec.name)
         tasks = sec.tasks
         activeTaskOpt = tasks |> Array.findFirst((t: TaskBlock) => t.status #= "In Progress")
-        activeTask = activeTaskOpt |> Option.orElse(() => tasks |> Array.head)
+        activeTask = activeTaskOpt |> orElse(() => tasks |> Array.head)
         match activeTask
           | None => []
           | Some(t) =>
@@ -60,7 +60,7 @@ readLanesAndStoreLogs = (boardDir: String) => {
         laneId = resolveLaneId(sec.name)
         tasks = sec.tasks
         activeTaskOpt = tasks |> Array.findFirst((t: TaskBlock) => t.status #= "In Progress")
-        activeTask = activeTaskOpt |> Option.orElse(() => tasks |> Array.head)
+        activeTask = activeTaskOpt |> orElse(() => tasks |> Array.head)
         match activeTask
           | None => {
             id: laneId,
@@ -121,8 +121,8 @@ readRecentLogsWorkflow = (boardDir: String, initialLogs: Array<String>) => effec
   raw = Option.getOrElse(rawOpt, () => "")
   when (raw #= "") => initialLogs
 
-  lines = raw |> split("\n") |> filter((l: String) => (l |> String.trim) #! "")
-  recentLines = lines |> Array.takeRight(10)
+  lines = raw |> split("\n") |> filter((l: String) => (l |> trim) #! "")
+  recentLines = lines |> takeRight(10)
   => Array.appendAll(initialLogs, recentLines)
 }
 

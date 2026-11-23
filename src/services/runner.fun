@@ -39,11 +39,11 @@ export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<Str
     | None =>
       proc.stdin.end()
   rawOut <- js Bun.readableStreamToText(proc.stdout)
-  outText = rawOut |> Option.flatMap(Schema.decodeUnknownOption(Schema.String)) |> Option.getOrElse(() => "")
+  outText = rawOut
   rawCode <- js proc.exited
-  code = rawCode |> Option.flatMap(Schema.decodeUnknownOption(Schema.Number)) |> Option.getOrElse(() => 0)
+  code = rawCode
   lines = outText |> String.split("\n")
-  events = lines |> Array.map(parseAgyLine) |> Array.getSomes
+  events = lines |> map(parseAgyLine) |> Array.getSomes
   usageLimited = events |> Array.some((e) => match e
     | UsageLimitReached => true
     | _ => false

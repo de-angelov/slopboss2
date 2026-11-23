@@ -144,7 +144,7 @@ getContentCompletedIds = (archiveContent: String): Array<String> => {
     => acc |> Array.append("" + rawId)
   })
 
-  => ids1 |> Array.appendAll(ids2)
+  => ids1 |> appendAll(ids2)
 }
 
 getCompletedTaskIds = (store: BoardStore): Array<String> => {
@@ -359,7 +359,7 @@ getExtraTasks = (tasksDoc: TasksDocument, existingTasks: Array<TaskBlock>): Arra
   })
   when (Option.isNone(backlogSec)) => []
   emptySec: MarkdownSection = { title: "", name: "", tasks: [], rawContent: "" }
-  sec = backlogSec |> Option.getOrElse(() => emptySec)
+  sec = backlogSec |> getOrElse(() => emptySec)
 
   when (Option.isNone(Option.fromNullishOr(sec.tasks))) => []
   tasks: Array<TaskBlock> = sec.tasks
@@ -390,7 +390,7 @@ isLaneActiveInDoc = (tasksDoc: TasksDocument, agentId: String): Boolean => {
   })
   when (Option.isNone(laneSec)) => false
   emptySec: MarkdownSection = { title: "", name: "", tasks: [], rawContent: "" }
-  sec = laneSec |> Option.getOrElse(() => emptySec)
+  sec = laneSec |> getOrElse(() => emptySec)
 
   when (Option.isNone(Option.fromNullishOr(sec.tasks))) => false
   tasks: Array<TaskBlock> = sec.tasks
@@ -426,10 +426,10 @@ export reconcileTick = (config: ReconcilerConfig, state: ReconcilerState): Effec
     (not (completedIds |> Array.contains(t.id))) and (not (activeTaskIds |> Array.contains(t.id)))
   )
 
-  dagNodes = pendingBacklog |> Array.map(toTaskNode)
+  dagNodes = pendingBacklog |> map(toTaskNode)
 
   readyIds = findReadyTasks(dagNodes, completedIds)
-  unblockedTasks = pendingBacklog |> Array.filter((t) => readyIds |> Array.contains(t.id))
+  unblockedTasks = pendingBacklog |> filter((t) => readyIds |> Array.contains(t.id))
 
   // 5. Detect idle lanes
   agentIndices = Array.range(1, devAgentCount)
