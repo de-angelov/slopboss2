@@ -4,26 +4,26 @@ import { BunServices } from "@effect/platform-bun"
 export error BoardLockedError(message: String, pid: Number)
 
 export schema BoardLock = {
-  pid: Number,
+  pid: Number
   timestamp: Number
 }
 
-runSyncEffect = <A>(eff: Effect.Effect<A, Never>): A => {
+runSyncEffect = <A>(eff: Effect.Effect<A, Never>): A =>
   runner = Effect
   res: A = runner.runSync(eff)
   => res
-}
 
-export isPidAlive = (pid: Number) => {
+export isPidAlive = (pid: Number) =>
   when (pid <= 0) => false
-  eff = Effect.try(() => process.kill(pid, 0)) |> map(() => true) |> orElseSucceed(() => false)
+  eff =
+    Effect.try(() => process.kill(pid, 0))
+    |> map(() => true)
+    |> orElseSucceed(() => false)
   => runSyncEffect(eff)
-}
 
-export getLockPath = (boardDir: String) => {
+export getLockPath = (boardDir: String) =>
   when (boardDir |> endsWith("/")) => boardDir + ".slopboss-board.lock"
   => boardDir + "/.slopboss-board.lock"
-}
 
 // --- Helpers ---
 
@@ -38,14 +38,13 @@ logAndRemoveLock = (fsService: FileSystem.FileSystem, lockPath: String, reason: 
   => Unit
 }
 
-handleValidLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir: String, lock: BoardLock) => {
+handleValidLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir: String, lock: BoardLock) =>
   when (lock.pid <= 0) => logAndRemoveLock(fsService, lockPath, "Corrupted lock file detected")
   when (not isPidAlive(lock.pid)) => logAndRemoveLock(fsService, lockPath, "Stale lock detected for dead PID " + lock.pid)
   => Effect.fail(BoardLockedError({
-    message: "Board at " + boardDir + " is locked by active PID " + lock.pid,
+    message: "Board at " + boardDir + " is locked by active PID " + lock.pid
     pid: lock.pid
   }))
-}
 
 handleExistingLock = (fsService: FileSystem.FileSystem, lockPath: String, boardDir: String) => effect {
   readAttempt <- fsService.readFileString(lockPath) |> option
@@ -57,23 +56,26 @@ handleExistingLock = (fsService: FileSystem.FileSystem, lockPath: String, boardD
 }
 
 removeLockIfOwned = (fsService: FileSystem.FileSystem, lockPath: String, parsed: Option<BoardLock>, lock: BoardLock, currentPid: Number, currentTime: Number) =>
-  match (Option.isSome(parsed) and lock.pid #= currentPid and lock.timestamp #= currentTime)
+  match Option.isSome(parsed) and lock.pid #= currentPid and lock.timestamp #= currentTime
     | true => fsService.remove(lockPath) |> ignore
     | false => Effect.void
 
-releaseOwnLock = (fsService: FileSystem.FileSystem, lockPath: String, currentPid: Number, currentTime: Number) => effect {
-  lockExists <- fsService.exists(lockPath)
-  _ <- match lockExists
-    | false => Effect.void
-    | true => effect {
-      rawOption <- fsService.readFileString(lockPath) |> option
-      parsed = rawOption |> flatMap(tryParseLockFile)
-      lock = parsed |> getOrElse(() => ({ pid: 0, timestamp: 0 }))
-      _ <- removeLockIfOwned(fsService, lockPath, parsed, lock, currentPid, currentTime)
-      => Unit
-    }
-  => Unit
-} |> ignore
+releaseOwnLock = (fsService: FileSystem.FileSystem, lockPath: String, currentPid: Number, currentTime: Number) =>
+  effect {
+    lockExists <- fsService.exists(lockPath)
+    _ <- match lockExists
+      | false => Effect.void
+      | true => effect {
+        rawOption <- fsService.readFileString(lockPath) |> option
+        parsed = rawOption |> flatMap(tryParseLockFile)
+        lock = parsed |> getOrElse(() => { pid: 0, timestamp: 0 })
+        _ <- removeLockIfOwned(fsService, lockPath, parsed, lock, currentPid, currentTime)
+        => Unit
+      }
+
+    => Unit
+  }
+  |> ignore
 
 // --- Main lock acquisition ---
 
@@ -101,7 +103,7 @@ acquireBoardLockScoped = (boardDir: String) => effect (unscoped) {
   })
 
   => {
-    pid: currentPid,
+    pid: currentPid
     timestamp: currentTime
   }
 }

@@ -14,16 +14,18 @@ export schema AgyEvent =
 
 export buildAgyCommand = (model: Option<String>) =>
   baseArgs = ["--output-format", "stream-json", "--dangerously-skip-permissions"]
-  args = match model
-    | Some(m) => baseArgs |> Array.appendAll(["--model", m])
-    | None => baseArgs
+  args =
+    match model
+      | Some(m) => baseArgs |> Array.appendAll(["--model", m])
+      | None => baseArgs
   => ["agy"] |> Array.appendAll(args)
 
 export buildInteractiveCommand = (model: Option<String>, prompt: String) =>
   baseArgs = ["--dangerously-skip-permissions", "-i", prompt]
-  args = match model
-    | Some(m) => baseArgs |> Array.appendAll(["--model", m])
-    | None => baseArgs
+  args =
+    match model
+      | Some(m) => baseArgs |> Array.appendAll(["--model", m])
+      | None => baseArgs
   => ["agy"] |> Array.appendAll(args)
 
 // Completion contract for the configured agy stream-json provider: accept a
@@ -36,15 +38,23 @@ export parseAgyLine = (line: String) =>
     Schema.Struct({ done: Schema.Literal(true) }),
     Schema.Struct({ status: Schema.Literal("completed") })
   ])
-  hasCompletionEvidence = Schema.decodeUnknownOption(Schema.fromJsonString(completionEvidence))(trimmed) |> Option.isSome
-  fallbackEvent = match trimmed
-    | l when l |> includes("rate_limit") => Option.some(UsageLimitReached)
-    | l when l |> includes("usage_limit") => Option.some(UsageLimitReached)
-    | l when l |> includes("\"type\":\"assistant\"") => Option.some(AssistantMessage(l))
-    | l when l |> includes("\"content\"") => Option.some(AssistantMessage(l))
-    | l when l |> includes("\"total_tokens\"") => Option.some(TokenUpdate({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }))
-    | _ => Option.none()
-  evt = match hasCompletionEvidence
-    | true => Option.some(SessionCompleted)
-    | false => fallbackEvent
+  hasCompletionEvidence =
+    Schema.decodeUnknownOption(Schema.fromJsonString(completionEvidence))(trimmed)
+    |> Option.isSome
+  fallbackEvent =
+    match trimmed
+      | l when l |> includes("rate_limit") => Option.some(UsageLimitReached)
+      | l when l |> includes("usage_limit") => Option.some(UsageLimitReached)
+      | l when l |> includes("\"type\":\"assistant\"") => Option.some(AssistantMessage(l))
+      | l when l |> includes("\"content\"") => Option.some(AssistantMessage(l))
+      | l when l |> includes("\"total_tokens\"") => Option.some(TokenUpdate({
+        inputTokens: 0
+        outputTokens: 0
+        totalTokens: 0
+      }))
+      | _ => Option.none()
+  evt =
+    match hasCompletionEvidence
+      | true => Option.some(SessionCompleted)
+      | false => fallbackEvent
   => evt

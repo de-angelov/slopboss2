@@ -22,34 +22,38 @@ export schema DoctorReportTs = DoctorReport
 export checkGitInstalledWorkflow = (gitCmd: String) => effect {
   res = safeSpawnSync([gitCmd, "--version"])
   outText = res.stdout |> trim
-  successMsg = match outText #= ""
-    | true => "Git is installed"
-    | false => outText
+  successMsg =
+    match outText #= ""
+      | true => "Git is installed"
+      | false => outText
   when (res.ok) => {
-    name: "git",
-    ok: true,
-    message: successMsg,
+    name: "git"
+    ok: true
+    message: successMsg
     required: true
   }
-  threwMsg = match res.stderr #= ""
-    | true => "git executable not found in PATH"
-    | false => res.stderr
+  threwMsg =
+    match res.stderr #= ""
+      | true => "git executable not found in PATH"
+      | false => res.stderr
   when (res.threw) => {
-    name: "git",
-    ok: false,
-    message: threwMsg,
+    name: "git"
+    ok: false
+    message: threwMsg
     required: true
   }
-  defaultErr = match res.stdout #= ""
-    | true => "git command exited with code " + res.exitCode
-    | false => res.stdout
-  err = match res.stderr #= ""
-    | true => defaultErr
-    | false => res.stderr
+  defaultErr =
+    match res.stdout #= ""
+      | true => "git command exited with code " + res.exitCode
+      | false => res.stdout
+  err =
+    match res.stderr #= ""
+      | true => defaultErr
+      | false => res.stderr
   => {
-    name: "git",
-    ok: false,
-    message: err,
+    name: "git"
+    ok: false
+    message: err
     required: true
   }
 }
@@ -69,34 +73,38 @@ export checkGitInstalledWith = (gitCmd: String) => effect {
 export checkBunInstalledWorkflow = (bunCmd: String) => effect {
   res = safeSpawnSync([bunCmd, "--version"])
   outText = res.stdout |> trim
-  successMsg = match outText #= ""
-    | true => "Bun is installed"
-    | false => "bun " + outText
+  successMsg =
+    match outText #= ""
+      | true => "Bun is installed"
+      | false => "bun " + outText
   when (res.ok) => {
-    name: "bun",
-    ok: true,
-    message: successMsg,
+    name: "bun"
+    ok: true
+    message: successMsg
     required: true
   }
-  threwMsg = match res.stderr #= ""
-    | true => "bun executable not found in PATH"
-    | false => res.stderr
+  threwMsg =
+    match res.stderr #= ""
+      | true => "bun executable not found in PATH"
+      | false => res.stderr
   when (res.threw) => {
-    name: "bun",
-    ok: false,
-    message: threwMsg,
+    name: "bun"
+    ok: false
+    message: threwMsg
     required: true
   }
-  defaultErr = match res.stdout #= ""
-    | true => "bun command exited with code " + res.exitCode
-    | false => res.stdout
-  err = match res.stderr #= ""
-    | true => defaultErr
-    | false => res.stderr
+  defaultErr =
+    match res.stdout #= ""
+      | true => "bun command exited with code " + res.exitCode
+      | false => res.stdout
+  err =
+    match res.stderr #= ""
+      | true => defaultErr
+      | false => res.stderr
   => {
-    name: "bun",
-    ok: false,
-    message: err,
+    name: "bun"
+    ok: false
+    message: err
     required: true
   }
 }
@@ -114,43 +122,49 @@ export checkBunInstalledWith = (bunCmd: String) => effect {
 }
 
 export checkProviderInstalledWorkflow = (providers: Array<String>) => effect {
-  listToCheck = match providers.length #= 0
-    | true => ["agy", "gemini"]
-    | false => providers
+  listToCheck =
+    match providers.length #= 0
+      | true => ["agy", "gemini"]
+      | false => providers
 
   mut found: Option<CheckResult> = Option.none()
-  _ = listToCheck |> forEach((p) => {
-    when (Option.isSome(found)) => true
-    res = safeSpawnSync([p, "--version"])
-    when (res.ok) {
-      ver = res.stdout |> trim
-      label = match p
-        | "agy" => "Antigravity CLI (agy)"
-        | "gemini" => "Gemini CLI"
-        | _ => p
-      verSuffix = match ver #= ""
-        | true => ""
-        | false => " (v" + ver + ")"
-      found = Option.some({
-        name: "provider",
-        ok: true,
-        message: label + " available" + verSuffix,
-        required: true
-      })
-    }
-    => true
-  })
+  _ =
+    listToCheck
+    |> forEach((p) => {
+      when (Option.isSome(found)) => true
+      res = safeSpawnSync([p, "--version"])
+      when (res.ok) {
+        ver = res.stdout |> trim
+        label =
+          match p
+            | "agy" => "Antigravity CLI (agy)"
+            | "gemini" => "Gemini CLI"
+            | _ => p
+        verSuffix =
+          match ver #= ""
+            | true => ""
+            | false => " (v" + ver + ")"
+        found = Option.some({
+          name: "provider"
+          ok: true
+          message: label + " available" + verSuffix
+          required: true
+        })
+      }
+      => true
+    })
 
   defaultProviderRes = {
-    name: "provider",
-    ok: false,
-    message: "Neither 'agy' nor 'gemini' CLI executable found in PATH",
+    name: "provider"
+    ok: false
+    message: "Neither 'agy' nor 'gemini' CLI executable found in PATH"
     required: true
   }
 
-  res = match found
-    | Some(c) => c
-    | None => defaultProviderRes
+  res =
+    match found
+      | Some(c) => c
+      | None => defaultProviderRes
   => res
 }
 
@@ -168,9 +182,9 @@ export checkProviderInstalledWith = (providers: Array<String>) => effect {
 
 export checkBoardDirectoryWorkflow = (boardDir: String) => effect {
   when (boardDir #= "") => {
-    name: "board",
-    ok: false,
-    message: "Board directory does not exist: " + boardDir,
+    name: "board"
+    ok: false
+    message: "Board directory does not exist: " + boardDir
     required: true
   }
 
@@ -179,38 +193,40 @@ export checkBoardDirectoryWorkflow = (boardDir: String) => effect {
 
   exists <- fs.exists(boardDir)
   when (not exists) => {
-    name: "board",
-    ok: false,
-    message: "Board directory does not exist: " + boardDir,
+    name: "board"
+    ok: false
+    message: "Board directory does not exist: " + boardDir
     required: true
   }
 
-  statRes <- fs.stat(boardDir) |> Effect.catch((_) => Effect.succeed({ type: "Unknown" }))
+  statRes <- fs.stat(boardDir)
+  |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
   when (statRes.type #! "Directory") => {
-    name: "board",
-    ok: false,
-    message: "Board path is not a directory: " + boardDir,
+    name: "board"
+    ok: false
+    message: "Board path is not a directory: " + boardDir
     required: true
   }
 
   requiredFiles = ["TASKS.md", "ARCHIVE.md", "AGENTS.md"]
-  missingFiles <- requiredFiles |> Effect.filter((file) => effect {
+  missingFiles <- requiredFiles
+  |> Effect.filter((file) => effect {
     filePath = path.join(boardDir, file)
     fileEx <- fs.exists(filePath)
     => not fileEx
   })
 
   when (missingFiles.length > 0) => {
-    name: "board",
-    ok: false,
-    message: "Missing required board files in " + boardDir + ": " + (missingFiles |> join(", ")),
+    name: "board"
+    ok: false
+    message: "Missing required board files in " + boardDir + ": " + (missingFiles |> join(", "))
     required: true
   }
 
   => {
-    name: "board",
-    ok: true,
-    message: "Board directory contains all required files (" + (requiredFiles |> join(", ")) + ")",
+    name: "board"
+    ok: true
+    message: "Board directory contains all required files (" + (requiredFiles |> join(", ")) + ")"
     required: true
   }
 }
@@ -224,9 +240,9 @@ export checkBoardDirectorySync = (boardDir: String) => Effect.runSync(checkBoard
 
 export checkWorkspacesWorkflow = (boardDir: String) => effect {
   when (boardDir #= "") => {
-    name: "workspaces",
-    ok: false,
-    message: "Board directory does not exist: " + boardDir,
+    name: "workspaces"
+    ok: false
+    message: "Board directory does not exist: " + boardDir
     required: true
   }
 
@@ -235,43 +251,47 @@ export checkWorkspacesWorkflow = (boardDir: String) => effect {
 
   exists <- fs.exists(boardDir)
   when (not exists) => {
-    name: "workspaces",
-    ok: false,
-    message: "Board directory does not exist: " + boardDir,
+    name: "workspaces"
+    ok: false
+    message: "Board directory does not exist: " + boardDir
     required: true
   }
 
   workspacesPath = path.join(boardDir, "workspaces")
   wsExists <- fs.exists(workspacesPath)
   when (not wsExists) => {
-    name: "workspaces",
-    ok: false,
-    message: "Workspaces directory does not exist at " + workspacesPath,
+    name: "workspaces"
+    ok: false
+    message: "Workspaces directory does not exist at " + workspacesPath
     required: true
   }
 
-  statRes <- fs.stat(workspacesPath) |> Effect.catch((_) => Effect.succeed({ type: "Unknown" }))
+  statRes <- fs.stat(workspacesPath)
+  |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
   when (statRes.type #! "Directory") => {
-    name: "workspaces",
-    ok: false,
-    message: "Workspaces path is not a directory: " + workspacesPath,
+    name: "workspaces"
+    ok: false
+    message: "Workspaces path is not a directory: " + workspacesPath
     required: true
   }
 
-  accessEffect = fs.access(workspacesPath, { readable: true, writable: true }) |> as(true) |> Effect.catch((_) => Effect.succeed(false))
+  accessEffect =
+    fs.access(workspacesPath, { readable: true, writable: true })
+    |> as(true)
+    |> Effect.catch((_) => Effect.succeed(false))
   accessRes <- accessEffect
 
   when (not accessRes) => {
-    name: "workspaces",
-    ok: false,
-    message: "Workspaces directory lacks read/write permissions: " + workspacesPath,
+    name: "workspaces"
+    ok: false
+    message: "Workspaces directory lacks read/write permissions: " + workspacesPath
     required: true
   }
 
   => {
-    name: "workspaces",
-    ok: true,
-    message: "Workspaces directory exists with read/write access: " + workspacesPath,
+    name: "workspaces"
+    ok: true
+    message: "Workspaces directory exists with read/write access: " + workspacesPath
     required: true
   }
 }
@@ -291,13 +311,15 @@ export runDoctorWorkflow = (boardDir: String) => effect {
   workspacesCheck <- checkWorkspacesWorkflow(boardDir)
 
   allChecks = [gitCheck, bunCheck, providerCheck, boardCheck, workspacesCheck]
-  healthy = allChecks |> Array.every((c) => match c.required
-    | true => c.ok
-    | false => true
-  )
+  healthy =
+    allChecks
+    |> Array.every((c) => match c.required
+      | true => c.ok
+      | false => true
+    )
 
   => {
-    isHealthy: healthy,
+    isHealthy: healthy
     checks: allChecks
   }
 }

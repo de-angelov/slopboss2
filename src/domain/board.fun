@@ -24,61 +24,73 @@ export schema Board = {
 export parseTaskLine = (line: String) =>
   trimmed = line |> trim
   nowMs = DateTime.toEpochMillis(DateTime.nowUnsafe())
-  parsed = match trimmed
-    | t when t |> startsWith("- [x]") =>
-      body = t |> substring(5) |> trim
-      {
-        id: "TASK-" + nowMs,
-        title: body,
-        description: body,
-        status: Done,
-        assignee: Option.none(),
-        branch: Option.none(),
-        dependsOn: []
-      }
-    | t when t |> startsWith("- [/]") =>
-      body = t |> substring(5) |> trim
-      {
-        id: "TASK-" + nowMs,
-        title: body,
-        description: body,
-        status: InProgress,
-        assignee: Option.none(),
-        branch: Option.none(),
-        dependsOn: []
-      }
-    | t when t |> startsWith("- [ ]") =>
-      body = t |> substring(5) |> trim
-      {
-        id: "TASK-" + nowMs,
-        title: body,
-        description: body,
-        status: Todo,
-        assignee: Option.none(),
-        branch: Option.none(),
-        dependsOn: []
-      }
-    | _ =>
-      {
-        id: "TASK-NOTE",
-        title: trimmed,
-        description: trimmed,
-        status: Blocked,
-        assignee: Option.none(),
-        branch: Option.none(),
-        dependsOn: []
-      }
+  parsed =
+    match trimmed
+      | t when t |> startsWith("- [x]") =>
+          body =
+            t
+            |> substring(5)
+            |> trim
+          {
+            id: "TASK-" + nowMs
+            title: body
+            description: body
+            status: Done
+            assignee: Option.none()
+            branch: Option.none()
+            dependsOn: []
+          }
+      | t when t |> startsWith("- [/]") =>
+          body =
+            t
+            |> substring(5)
+            |> trim
+          {
+            id: "TASK-" + nowMs
+            title: body
+            description: body
+            status: InProgress
+            assignee: Option.none()
+            branch: Option.none()
+            dependsOn: []
+          }
+      | t when t |> startsWith("- [ ]") =>
+          body =
+            t
+            |> substring(5)
+            |> trim
+          {
+            id: "TASK-" + nowMs
+            title: body
+            description: body
+            status: Todo
+            assignee: Option.none()
+            branch: Option.none()
+            dependsOn: []
+          }
+      | _ =>
+          {
+            id: "TASK-NOTE"
+            title: trimmed
+            description: trimmed
+            status: Blocked
+            assignee: Option.none()
+            branch: Option.none()
+            dependsOn: []
+          }
   => parsed
 
 export formatTaskLine = (task: Task) =>
-  prefix = match task.status
-    | Done => "- [x] "
-    | InProgress => "- [/] "
-    | Blocked => "- [!] "
-    | Todo => "- [ ] "
-  
-  meta = match task.assignee
-    | Some(agent) => " [assigned: " + agent + "]"
-    | None => ""
+  prefix =
+    match task.status
+      | Done => "- [x] "
+      | InProgress => "- [/] "
+      | Blocked => "- [!] "
+      | Todo => "- [ ] "
+
+  meta =
+    match task.assignee
+      | Some(agent) => " [assigned: " + agent + "]"
+      | None => ""
 
   => prefix + task.id + ": " + task.title + meta

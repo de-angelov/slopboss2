@@ -34,80 +34,93 @@ export readOptionalFileWorkflow = (filePath: String, fallback: String) => effect
   => trimmed
 }
 
-export readOptionalFileEffect = (filePath: String, fallback: String) => {
-  => readOptionalFileWorkflow(filePath, fallback) |> provide(BunServices.layer)
-}
+export readOptionalFileEffect = (filePath: String, fallback: String) =>
+  readOptionalFileWorkflow(filePath, fallback) |> provide(BunServices.layer)
 
-export readOptionalFile = (filePath: String, fallback: String) => {
-  => runSyncWithPlatform(readOptionalFileWorkflow(filePath, fallback))
-}
+export readOptionalFile = (filePath: String, fallback: String) =>
+  runSyncWithPlatform(readOptionalFileWorkflow(filePath, fallback))
 
 export buildDevAgentPromptWorkflow = (boardDir: String, task: TaskBlock, agentName: String) => effect {
   pathService <- Path.Path
 
-  agentsPath = match (not boardDir or boardDir #= "")
-    | true => ""
-    | false => pathService.join(boardDir, "AGENTS.md")
+  agentsPath =
+    match not boardDir or boardDir #= ""
+      | true => ""
+      | false => pathService.join(boardDir, "AGENTS.md")
 
-  devPath = match (not boardDir or boardDir #= "")
-    | true => ""
-    | false => pathService.join(boardDir, "DEV_AGENT.md")
+  devPath =
+    match not boardDir or boardDir #= ""
+      | true => ""
+      | false => pathService.join(boardDir, "DEV_AGENT.md")
 
-  techPath = match (not boardDir or boardDir #= "")
-    | true => ""
-    | false => pathService.join(boardDir, "TECH.md")
+  techPath =
+    match not boardDir or boardDir #= ""
+      | true => ""
+      | false => pathService.join(boardDir, "TECH.md")
 
   agentsContent <- readOptionalFileWorkflow(agentsPath, DEFAULT_AGENTS_GUIDELINES)
   devAgentContent <- readOptionalFileWorkflow(devPath, DEFAULT_DEV_AGENT_GUIDELINES)
   techContent <- readOptionalFileWorkflow(techPath, "")
 
-  role = match (not agentName or agentName #= "")
-    | true => "Dev Agent"
-    | false => agentName
+  role =
+    match not agentName or agentName #= ""
+      | true => "Dev Agent"
+      | false => agentName
 
-  boardRoot = match (not boardDir or boardDir #= "")
-    | true => "."
-    | false => boardDir
+  boardRoot =
+    match not boardDir or boardDir #= ""
+      | true => "."
+      | false => boardDir
 
-  taskBranch = match (not task or not task.branch or task.branch #= "")
-    | true => "agent/branch"
-    | false => task.branch
+  taskBranch =
+    match not task or not task.branch or task.branch #= ""
+      | true => "agent/branch"
+      | false => task.branch
 
-  taskTitle = match (not task or not task.title or task.title #= "")
-    | true => "Untitled Task"
-    | false => task.title
+  taskTitle =
+    match not task or not task.title or task.title #= ""
+      | true => "Untitled Task"
+      | false => task.title
 
-  taskId = match (not task or not task.id or task.id #= "")
-    | true => "UNKNOWN"
-    | false => task.id
+  taskId =
+    match not task or not task.id or task.id #= ""
+      | true => "UNKNOWN"
+      | false => task.id
 
-  taskCategory = match (not task or not task.category or task.category #= "")
-    | true => "Development"
-    | false => task.category
+  taskCategory =
+    match not task or not task.category or task.category #= ""
+      | true => "Development"
+      | false => task.category
 
-  taskOwner = match (not task or not task.owner or task.owner #= "")
-    | true => role
-    | false => task.owner
+  taskOwner =
+    match not task or not task.owner or task.owner #= ""
+      | true => role
+      | false => task.owner
 
-  taskStatus = match (not task or not task.status or task.status #= "")
-    | true => "In Progress"
-    | false => task.status
+  taskStatus =
+    match not task or not task.status or task.status #= ""
+      | true => "In Progress"
+      | false => task.status
 
-  deps = match (not task or not task.dependencies or task.dependencies.length #= 0)
-    | true => "none"
-    | false => task.dependencies |> join(", ")
+  deps =
+    match not task or not task.dependencies or task.dependencies.length #= 0
+      | true => "none"
+      | false => task.dependencies |> join(", ")
 
-  taskObjective = match (not task or not task.objective or task.objective #= "")
-    | true => "No objective provided."
-    | false => task.objective
+  taskObjective =
+    match not task or not task.objective or task.objective #= ""
+      | true => "No objective provided."
+      | false => task.objective
 
-  taskScope = match (not task or not task.scope or task.scope #= "")
-    | true => "No scope specified."
-    | false => task.scope
+  taskScope =
+    match not task or not task.scope or task.scope #= ""
+      | true => "No scope specified."
+      | false => task.scope
 
-  taskAcceptanceCriteria = match (not task or not task.acceptanceCriteria or task.acceptanceCriteria #= "")
-    | true => "No acceptance criteria specified."
-    | false => task.acceptanceCriteria
+  taskAcceptanceCriteria =
+    match not task or not task.acceptanceCriteria or task.acceptanceCriteria #= ""
+      | true => "No acceptance criteria specified."
+      | false => task.acceptanceCriteria
 
   baseSections = [
     "You are running inside the multi-agent development workflow.",
@@ -122,9 +135,10 @@ export buildDevAgentPromptWorkflow = (boardDir: String, task: TaskBlock, agentNa
     devAgentContent
   ]
 
-  techSections = match (techContent #= "")
-    | true => []
-    | false => [
+  techSections =
+    match techContent #= ""
+      | true => []
+      | false => [
         "",
         "================ TECH.md ================",
         techContent
@@ -157,93 +171,107 @@ export buildDevAgentPromptWorkflow = (boardDir: String, task: TaskBlock, agentNa
     taskAcceptanceCriteria
   ]
 
-  allSections = baseSections |> Array.appendAll(techSections) |> Array.appendAll(tailSections)
+  allSections =
+    baseSections
+    |> Array.appendAll(techSections)
+    |> Array.appendAll(tailSections)
   => allSections |> join("\n")
 }
 
-export buildDevAgentPromptEffect = (boardDir: String, task: TaskBlock, agentName: String) => {
-  => buildDevAgentPromptWorkflow(boardDir, task, agentName) |> provide(BunServices.layer)
-}
+export buildDevAgentPromptEffect = (boardDir: String, task: TaskBlock, agentName: String) =>
+  buildDevAgentPromptWorkflow(boardDir, task, agentName)
+  |> provide(BunServices.layer)
 
-export buildDevAgentPrompt = (boardDir: String, task: TaskBlock, agentName: String) => {
-  => runSyncWithPlatform(buildDevAgentPromptWorkflow(boardDir, task, agentName))
-}
+export buildDevAgentPrompt = (boardDir: String, task: TaskBlock, agentName: String) =>
+  runSyncWithPlatform(buildDevAgentPromptWorkflow(boardDir, task, agentName))
 
-export buildDevAgentPromptFun = (boardDir: String, task: TaskBlock, agentName: String) => {
-  => buildDevAgentPrompt(boardDir, task, agentName)
-}
+export buildDevAgentPromptFun = (boardDir: String, task: TaskBlock, agentName: String) =>
+  buildDevAgentPrompt(boardDir, task, agentName)
 
-formatActiveTasks = (activeTasks: Array<TaskBlock>) => {
+formatActiveTasks = (activeTasks: Array<TaskBlock>) =>
   pattern = RegExp("\\n+", "g")
-  taskLines = activeTasks |> map((t: TaskBlock, idx: Number) => {
-    owner = match (not t.owner or t.owner #= "")
-      | true => "Unassigned"
-      | false => t.owner
+  taskLines =
+    activeTasks
+    |> map((t: TaskBlock, idx: Number) => {
+      owner =
+        match not t.owner or t.owner #= ""
+          | true => "Unassigned"
+          | false => t.owner
 
-    title = match (not t.title or t.title #= "")
-      | true => "Untitled"
-      | false => t.title
+      title =
+        match not t.title or t.title #= ""
+          | true => "Untitled"
+          | false => t.title
 
-    branch = match (not t.branch or t.branch #= "")
-      | true => "none"
-      | false => t.branch
+      branch =
+        match not t.branch or t.branch #= ""
+          | true => "none"
+          | false => t.branch
 
-    status = match (not t.status or t.status #= "")
-      | true => "In Progress"
-      | false => t.status
+      status =
+        match not t.status or t.status #= ""
+          | true => "In Progress"
+          | false => t.status
 
-    deps = match (not t.dependencies or t.dependencies.length #= 0)
-      | true => "none"
-      | false => t.dependencies |> join(", ")
+      deps =
+        match not t.dependencies or t.dependencies.length #= 0
+          | true => "none"
+          | false => t.dependencies |> join(", ")
 
-    cleanObj = match (not t.objective or t.objective #= "")
-      | true => "N/A"
-      | false => t.objective |> replace(pattern, " ")
+      cleanObj =
+        match not t.objective or t.objective #= ""
+          | true => "N/A"
+          | false => t.objective |> replace(pattern, " ")
 
-    laneNum = "" + (idx + 1)
-    lines = [
-      "Lane " + laneNum + " (" + owner + "):",
-      "  - Task ID: " + t.id,
-      "  - Title: " + title,
-      "  - Branch: " + branch,
-      "  - Status: " + status,
-      "  - Dependencies: " + deps,
-      "  - Objective: " + cleanObj
-    ]
-    => lines |> join("\n")
-  })
+      laneNum = "" + (idx + 1)
+      lines = [
+        "Lane " + laneNum + " (" + owner + "):",
+        "  - Task ID: " + t.id,
+        "  - Title: " + title,
+        "  - Branch: " + branch,
+        "  - Status: " + status,
+        "  - Dependencies: " + deps,
+        "  - Objective: " + cleanObj
+      ]
+      => lines |> join("\n")
+    })
   => taskLines |> join("\n\n")
-}
 
 export buildTeamLeadPromptWorkflow = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) => effect {
   pathService <- Path.Path
 
-  tlPath = match (not boardDir or boardDir #= "")
-    | true => ""
-    | false => pathService.join(boardDir, "TEAM_LEAD_AGENT.md")
+  tlPath =
+    match not boardDir or boardDir #= ""
+      | true => ""
+      | false => pathService.join(boardDir, "TEAM_LEAD_AGENT.md")
 
-  agentsPath = match (not boardDir or boardDir #= "")
-    | true => ""
-    | false => pathService.join(boardDir, "AGENTS.md")
+  agentsPath =
+    match not boardDir or boardDir #= ""
+      | true => ""
+      | false => pathService.join(boardDir, "AGENTS.md")
 
   tlContent <- readOptionalFileWorkflow(tlPath, DEFAULT_TEAM_LEAD_GUIDELINES)
   agentsContent <- readOptionalFileWorkflow(agentsPath, DEFAULT_AGENTS_GUIDELINES)
 
-  lanesSection = match (not activeTasks or activeTasks.length #= 0)
-    | true => "No active tasks in progress across agent lanes. All lanes are idle and ready for assignment."
-    | false => formatActiveTasks(activeTasks)
+  lanesSection =
+    match not activeTasks or activeTasks.length #= 0
+      | true => "No active tasks in progress across agent lanes. All lanes are idle and ready for assignment."
+      | false => formatActiveTasks(activeTasks)
 
-  trimmedBacklog = match (not backlogContent or backlogContent #= "")
-    | true => ""
-    | false => backlogContent |> trim
+  trimmedBacklog =
+    match not backlogContent or backlogContent #= ""
+      | true => ""
+      | false => backlogContent |> trim
 
-  cleanBacklog = match (trimmedBacklog #= "")
-    | true => "# BACKLOG\n\nNo pending backlog items."
-    | false => trimmedBacklog
+  cleanBacklog =
+    match trimmedBacklog #= ""
+      | true => "# BACKLOG\n\nNo pending backlog items."
+      | false => trimmedBacklog
 
-  boardRoot = match (not boardDir or boardDir #= "")
-    | true => "."
-    | false => boardDir
+  boardRoot =
+    match not boardDir or boardDir #= ""
+      | true => "."
+      | false => boardDir
 
   sections = [
     "You are running inside the multi-agent development workflow.",
@@ -272,14 +300,12 @@ export buildTeamLeadPromptWorkflow = (boardDir: String, backlogContent: String, 
   => sections |> join("\n")
 }
 
-export buildTeamLeadPromptEffect = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) => {
-  => buildTeamLeadPromptWorkflow(boardDir, backlogContent, activeTasks) |> provide(BunServices.layer)
-}
+export buildTeamLeadPromptEffect = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) =>
+  buildTeamLeadPromptWorkflow(boardDir, backlogContent, activeTasks)
+  |> provide(BunServices.layer)
 
-export buildTeamLeadPrompt = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) => {
-  => runSyncWithPlatform(buildTeamLeadPromptWorkflow(boardDir, backlogContent, activeTasks))
-}
+export buildTeamLeadPrompt = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) =>
+  runSyncWithPlatform(buildTeamLeadPromptWorkflow(boardDir, backlogContent, activeTasks))
 
-export buildTeamLeadPromptFun = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) => {
-  => buildTeamLeadPrompt(boardDir, backlogContent, activeTasks)
-}
+export buildTeamLeadPromptFun = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) =>
+  buildTeamLeadPrompt(boardDir, backlogContent, activeTasks)

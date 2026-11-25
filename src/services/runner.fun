@@ -12,9 +12,9 @@ export schema SessionResult = {
 export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscoped) {
   cmdArray = [...cmd]
   proc = Bun.spawn(cmdArray, {
-    cwd: cwd,
-    stdin: "pipe",
-    stdout: "pipe",
+    cwd: cwd
+    stdin: "pipe"
+    stdout: "pipe"
     stderr: "pipe"
   })
 
@@ -31,47 +31,60 @@ export spawnScopedProcess = (cmd: Array<String>, cwd: String) => effect (unscope
 // piping stdin, collecting stdout stream, and extracting structured events.
 export runAgentSession = (cmd: Array<String>, cwd: String, stdinText: Option<String>) => effect {
   proc <- spawnScopedProcess(cmd, cwd)
-  _ = match stdinText
-    | Some(text) =>
-      written = proc.stdin.write(text)
-      closed = proc.stdin.end()
-      => closed
-    | None =>
-      proc.stdin.end()
+  _ =
+    match stdinText
+      | Some(text) =>
+          written = proc.stdin.write(text)
+          closed = proc.stdin.end()
+          => closed
+      | None =>
+          proc.stdin.end()
   rawOut <- js Bun.readableStreamToText(proc.stdout)
-  outText = rawOut |> Option.flatMap(Schema.decodeUnknownOption(Schema.String)) |> Option.getOrElse(() => "")
+  outText =
+    rawOut
+    |> Option.flatMap(Schema.decodeUnknownOption(Schema.String))
+    |> Option.getOrElse(() => "")
   rawCode <- js proc.exited
-  code = rawCode |> Option.flatMap(Schema.decodeUnknownOption(Schema.Number)) |> Option.getOrElse(() => 1)
+  code =
+    rawCode
+    |> Option.flatMap(Schema.decodeUnknownOption(Schema.Number))
+    |> Option.getOrElse(() => 1)
   lines = outText |> String.split("\n")
-  events = lines |> map(parseAgyLine) |> getSomes
-  usageLimited = events |> Array.some((e) => match e
-    | UsageLimitReached => true
-    | _ => false
-  )
-  isCompleted = events |> Array.some((e) => match e
-    | SessionCompleted => true
-    | _ => false
-  )
+  events =
+    lines
+    |> map(parseAgyLine)
+    |> getSomes
+  usageLimited =
+    events
+    |> Array.some((e) => match e
+      | UsageLimitReached => true
+      | _ => false
+    )
+  isCompleted =
+    events
+    |> Array.some((e) => match e
+      | SessionCompleted => true
+      | _ => false
+    )
   => {
-    exitCode: code,
-    totalTokens: lines |> length,
+    exitCode: code
+    totalTokens: lines |> length
     completed: isCompleted and not usageLimited and code #= 0
   }
 }
 
-export runConfiguredAgentSession = (prompt: String, cwd: String, provider: String = "agy") => {
+export runConfiguredAgentSession = (prompt: String, cwd: String, provider: String = "agy") =>
   command = buildAgyCommand(Option.none())
   selected = [provider] |> Array.appendAll(command |> Array.drop(1))
   => runAgentSession(selected, cwd, Option.some(prompt))
-}
 
 export runMockAgentSession = (agentName: String, taskId: String) => effect {
   _ <- Console.log("[RUNNER] Agent " + agentName + " started executing task " + taskId)
   _ <- Console.log("[RUNNER] Workspace clean, branch checked out.")
   _ <- Console.log("[RUNNER] Agent session completed successfully.")
   => {
-    exitCode: 0,
-    totalTokens: 1420,
+    exitCode: 0
+    totalTokens: 1420
     completed: true
   }
 }

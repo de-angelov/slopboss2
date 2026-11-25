@@ -16,49 +16,65 @@ export schema OrchestratorState = {
   agents: Array<AgentState>
 }
 
-export initialOrchestratorState = (): OrchestratorState => {
+export initialOrchestratorState = (): OrchestratorState =>
   agents: Array<AgentState> = [
     {
-      id: "Dev Agent 1",
-      status: "Idle",
-      currentTask: Option.none(),
+      id: "Dev Agent 1"
+      status: "Idle"
+      currentTask: Option.none()
       workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1"
     },
     {
-      id: "Dev Agent 2",
-      status: "Idle",
-      currentTask: Option.none(),
+      id: "Dev Agent 2"
+      status: "Idle"
+      currentTask: Option.none()
       workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2"
     }
   ]
   => {
-    tickCount: 0,
+    tickCount: 0
     agents: agents
   }
-}
 
-logTickTransition = (tickCount: Number) => {
+logTickTransition = (tickCount: Number) =>
   when (tickCount #= 0) => Console.log("  -> Dispatching: Dev Agent 1 on [SB2-03], Dev Agent 2 on [SB2-05]")
   when (tickCount #= 1) => Console.log("  -> Working: Dev Agent 1 on agent/1/sb2-03, Dev Agent 2 on agent/2/sb2-05")
   => Console.log("  -> Merged: All branches merged to main. Tasks marked Done.")
-}
 
-getUpdatedAgents = (tickCount: Number, currentAgents: Array<AgentState>): Array<AgentState> => {
+getUpdatedAgents = (tickCount: Number, currentAgents: Array<AgentState>): Array<AgentState> =>
   when (tickCount #= 0) => [
-    { id: "Dev Agent 1", status: "Running", currentTask: Option.some("SB2-03"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
-    { id: "Dev Agent 2", status: "Running", currentTask: Option.some("SB2-05"), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
+    {
+      id: "Dev Agent 1"
+      status: "Running"
+      currentTask: Option.some("SB2-03")
+      workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1"
+    },
+    {
+      id: "Dev Agent 2"
+      status: "Running"
+      currentTask: Option.some("SB2-05")
+      workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2"
+    }
   ]
   when (tickCount #= 1) => currentAgents
   => [
-    { id: "Dev Agent 1", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1" },
-    { id: "Dev Agent 2", status: "Completed", currentTask: Option.none(), workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2" }
+    {
+      id: "Dev Agent 1"
+      status: "Completed"
+      currentTask: Option.none()
+      workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-1"
+    },
+    {
+      id: "Dev Agent 2"
+      status: "Completed"
+      currentTask: Option.none()
+      workspace: "/home/dangelov/slopboss2-board/workspaces/repo-agent-2"
+    }
   ]
-}
 
-reportAgentStatuses = (agents: Array<AgentState>) => {
+reportAgentStatuses = (agents: Array<AgentState>) =>
   when ((agents |> length) #= 0) => Console.log("  No agents active")
   => Effect.forEach(agents, (a: AgentState) => Console.log("  " + a.id + ": " + a.status))
-}
 
 export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) => effect {
   state <- Ref.get(stateRef)
@@ -69,7 +85,7 @@ export reconcileTick = (stateRef: Ref.Ref<OrchestratorState>, boardDir: String) 
   updatedAgents = getUpdatedAgents(state.tickCount, state.agents)
 
   _ <- Ref.update(stateRef, (s) => {
-    tickCount: newTick,
+    tickCount: newTick
     agents: updatedAgents
   })
   => newTick
