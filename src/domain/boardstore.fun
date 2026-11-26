@@ -544,9 +544,9 @@ export formatTasksDocument = (docOrSections: Unknown, maybeHeader?: String): Str
 export formatArchiveDocument = (doc: TasksDocument, summaryBullets?: String): String =>
   header =
     Option.fromUndefinedOr(summaryBullets)
-    |> Option.map((b: String) => b |> String.trim)
-    |> Option.filter((b: String) => b #! "")
-    |> Option.getOrElse(() => doc.header)
+    |> map((b: String) => b |> trim)
+    |> filter((b: String) => b #! "")
+    |> getOrElse(() => doc.header)
   => formatTasksDocument(doc, header)
 
 chooseDocumentSections = (doc: TasksDocument): Array<MarkdownSection> =>
