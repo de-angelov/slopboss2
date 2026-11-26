@@ -16,22 +16,21 @@ export schema NodeError = {
   message?: String
 }
 
-fallbackCustomEnv = (envOpt: Unknown): Any =>
-  match Option.fromNullishOr(envOpt)
-    | Some(e) => e
-    | None => {}
-    | _ => {}
+fallbackCustomEnv = (envOpt: Unknown): Record<String, String> =>
+  decoded = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.String))(envOpt)
+  => Option.getOrElse(decoded, () => {})
 
 export safeSpawnSync = (cmd: Array<String>, envOpt: Unknown = Option.none(), cwd: String = ""): SafeSpawnResult =>
   eff =
     Effect.try({
       "try": () => {
-        customEnv: Any =
+        rawCustomEnv: Unknown =
           match envOpt
             | Some(e) => e
-            | None => fallbackCustomEnv(envOpt)
-            | _ => {}
-        mergedEnv: Any = { ...process.env, ...customEnv }
+            | None => {}
+            | _ => envOpt
+        customEnv: Record<String, String> = fallbackCustomEnv(rawCustomEnv)
+        mergedEnv = { ...process.env, ...customEnv }
         opts =
           match cwd #! ""
             | true => { cwd: cwd, env: mergedEnv }
@@ -238,42 +237,38 @@ calcAccessMode = (opt: Unknown = 0): Number =>
       | _ => 0
   => r + w
 
-makeBaseInfo = (t: ("Directory" | "File" | "Unknown"), sizeNum: Number) =>
-  devVal: Any =
-    match BigInt.fromNumber(0)
-      | Some(n) => n
-      | None => 0
-      | _ => 0
-  => {
-    "type": t
-    mtime: Option.none()
-    atime: Option.none()
-    birthtime: Option.none()
-    dev: devVal
-    ino: Option.none()
-    mode: 0
-    nlink: Option.none()
-    uid: Option.none()
-    gid: Option.none()
-    rdev: Option.none()
-    size: ByteSize.bytes(sizeNum)
-    blksize: Option.none()
-    blocks: Option.none()
-  }
+makeBaseInfo = (t: ("Directory" | "File" | "Unknown"), sizeNum: Number) => {
+  "type": t
+  mtime: Option.none()
+  atime: Option.none()
+  birthtime: Option.none()
+  dev: ByteSize.bytes(0)
+  ino: Option.none()
+  mode: 0
+  nlink: Option.none()
+  uid: Option.none()
+  gid: Option.none()
+  rdev: Option.none()
+  size: ByteSize.bytes(sizeNum)
+  blksize: Option.none()
+  blocks: Option.none()
+}
 
 makeDirInfo = (sizeNum: Number) => makeBaseInfo("Directory", sizeNum)
 makeFileInfo = (sizeNum: Number) => makeBaseInfo("File", sizeNum)
 makeUnknownInfo = (sizeNum: Number) => makeBaseInfo("Unknown", sizeNum)
 
 makeFileStatInfo = (isDir: Boolean, isFile: Boolean, sizeNum: Number) =>
-  when (isDir) => makeDirInfo(sizeNum)
-  when (isFile) => makeFileInfo(sizeNum)
-  => makeUnknownInfo(sizeNum)
+  match
+    | isDir => makeDirInfo(sizeNum)
+    | isFile => makeFileInfo(sizeNum)
+    | _ => makeUnknownInfo(sizeNum)
 
 makeDirEntry = (name: String, isDir: Boolean, isFile: Boolean) =>
-  when (isDir) => { name: name, "type": "Directory" }
-  when (isFile) => { name: name, "type": "File" }
-  => { name: name, "type": "Unknown" }
+  match
+    | isDir => { name: name, "type": "Directory" }
+    | isFile => { name: name, "type": "File" }
+    | _ => { name: name, "type": "Unknown" }
 
 export SyncFileSystem = FileSystem.make({
   access: (p: String, opt: Unknown = 0) => Effect.try({
@@ -411,6 +406,6 @@ export SyncServices = {
   layer: Layer.merge(Layer.succeed(FileSystem.FileSystem, SyncFileSystem), Path.layer)
 }
 
-export runSyncWithPlatform = (effectVal: Effect.Effect<Any, Any, FileSystem.FileSystem | Path.Path>): Any =>
-  provided = effectVal |> provide(SyncServices.layer)
+export runSyncWithPlatform = (effectVal: Effect.Effect<Unknown, Unknown, FileSystem.FileSystem | Path.Path>): Unknown =>
+  provided = effectVal |> Effect.provide(SyncServices.layer)
   => Effect.runSync(provided)

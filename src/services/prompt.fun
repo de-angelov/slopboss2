@@ -1,4 +1,4 @@
-import { Array, Effect, Option, Schema, String } from "effect"
+import { Array, Effect, Option, Predicate, Schema, String } from "effect"
 import { FileSystem, Path } from "effect"
 import { BunServices } from "@effect/platform-bun"
 import { SyncServices, runSyncWithPlatform } from "./sys.js"
@@ -24,18 +24,23 @@ export DEFAULT_DEV_AGENT_GUIDELINES = "# Dev Agent Role Instructions (Fallback R
 export DEFAULT_TEAM_LEAD_GUIDELINES = "# Team Lead Agent Role Instructions (Fallback Rules)\n\n## Responsibilities\n- Review backlog items and prioritize work according to dependencies.\n- Groom tasks with clear Task ID, Category, Owner, Branch, Status, Objective, Scope, and Acceptance Criteria.\n- Assign ready tasks to available idle Dev Agent execution lanes.\n- Coordinate dependencies and avoid overlapping file ownership across lanes."
 
 export readOptionalFileWorkflow = (filePath: String, fallback: String) => effect {
-  when (not filePath or filePath #= "") => fallback
   fs <- FileSystem.FileSystem
-  exists <- fs.exists(filePath) |> Effect.catch((_) => Effect.succeed(false))
-  when (not exists) => fallback
-  content <- fs.readFileString(filePath) |> Effect.catch((_) => Effect.succeed(""))
-  trimmed = content |> trim
-  when (trimmed #= "") => fallback
-  => trimmed
+  isValidPath = Predicate.isNotNullish(filePath) and filePath #! ""
+  exists <- match isValidPath
+    | false => Effect.succeed(false)
+    | true => fs.exists(filePath) |> Effect.catch((_) => Effect.succeed(false))
+  raw <- match exists
+    | false => Effect.succeed("")
+    | true => fs.readFileString(filePath) |> Effect.catch((_) => Effect.succeed(""))
+  trimmed = raw |> String.trim
+  => match trimmed #= ""
+    | true => fallback
+    | false => trimmed
 }
 
 export readOptionalFileEffect = (filePath: String, fallback: String) =>
-  readOptionalFileWorkflow(filePath, fallback) |> provide(BunServices.layer)
+  readOptionalFileWorkflow(filePath, fallback)
+  |> Effect.provide(BunServices.layer)
 
 export readOptionalFile = (filePath: String, fallback: String) =>
   runSyncWithPlatform(readOptionalFileWorkflow(filePath, fallback))
@@ -180,7 +185,7 @@ export buildDevAgentPromptWorkflow = (boardDir: String, task: TaskBlock, agentNa
 
 export buildDevAgentPromptEffect = (boardDir: String, task: TaskBlock, agentName: String) =>
   buildDevAgentPromptWorkflow(boardDir, task, agentName)
-  |> provide(BunServices.layer)
+  |> Effect.provide(BunServices.layer)
 
 export buildDevAgentPrompt = (boardDir: String, task: TaskBlock, agentName: String) =>
   runSyncWithPlatform(buildDevAgentPromptWorkflow(boardDir, task, agentName))
@@ -302,7 +307,7 @@ export buildTeamLeadPromptWorkflow = (boardDir: String, backlogContent: String, 
 
 export buildTeamLeadPromptEffect = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) =>
   buildTeamLeadPromptWorkflow(boardDir, backlogContent, activeTasks)
-  |> provide(BunServices.layer)
+  |> Effect.provide(BunServices.layer)
 
 export buildTeamLeadPrompt = (boardDir: String, backlogContent: String, activeTasks: Array<TaskBlock> = []) =>
   runSyncWithPlatform(buildTeamLeadPromptWorkflow(boardDir, backlogContent, activeTasks))

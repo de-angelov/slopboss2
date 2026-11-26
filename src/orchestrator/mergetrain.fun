@@ -19,15 +19,29 @@ export schema MergeResult = {
 git = (args: Array<String>, cwd: String) => runGitCommandSync(args, cwd)
 
 messageOf = (result: GitSubprocessResult) =>
-  match result.stderr |> isEmpty
+  match result.stderr |> String.isEmpty
     | true => result.stdout
-    | false => result.stderr
+    | _ => result.stderr
 
 runVerification = (cmd: String, cwd: String) => safeSpawnSync(["bash", "-lc", cmd], Option.none(), cwd)
 
+failLanding = (taskId: String, msg: String): MergeResult => {
+  taskId: taskId
+  success: false
+  commitHash: Option.none()
+  "error": Option.some(msg)
+}
+
+succeedLanding = (taskId: String, hash: Option.Option<String>): MergeResult => {
+  taskId: taskId
+  success: true
+  commitHash: hash
+  "error": Option.none()
+}
+
 export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
   isZero = Option.fromNullishOr(req.isZeroCommit) |> Option.getOrElse(() => false)
-  verification = Option.fromNullishOr(req.verificationCmd)
+  verification = req.verificationCmd
   verificationRes: SafeSpawnResult =
     match verification
       | Some(cmd) => runVerification(cmd, req.workspace)
@@ -38,118 +52,113 @@ export landMergeRequest = (req: MergeRequest, baseBranch: String) => effect {
         ok: true
         threw: false
       }
-  when (not verificationRes.ok) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Verification failed: " + verificationRes.stdout + " " + verificationRes.stderr)
-  }
-  when (isZero) => {
-    taskId: req.taskId
-    success: true
-    commitHash: Option.none()
-    "error": Option.none()
-  }
 
-  remoteRes = git(["remote", "get-url", "origin"], req.workspace)
-  when (not (remoteRes.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Cannot resolve origin: " + messageOf(remoteRes))
-  }
-  remote = remoteRes.stdout
-  tempRes = Bun.spawnSync(["mktemp", "-d"], { stdout: "pipe", stderr: "pipe" })
-  tempDir = tempRes.stdout.toString() |> trim
-  cloneRes = git(["clone", "--quiet", remote, tempDir], req.workspace)
-  when (not (cloneRes.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Cannot create isolated landing repository: " + messageOf(cloneRes))
-  }
-  fetchRes = git(["fetch", "origin", baseBranch, req.branch], tempDir)
-  when (not (fetchRes.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Branch or base validation failed: " + messageOf(fetchRes))
-  }
-  baseCheck = git(["show-ref", "--verify", "--quiet", "refs/remotes/origin/" + baseBranch], tempDir)
-  branchCheck = git(["show-ref", "--verify", "--quiet", "refs/remotes/origin/" + req.branch], tempDir)
-  when (not (baseCheck.exitCode #= 0) or not (branchCheck.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Configured base branch or task branch does not exist on origin")
-  }
+  workflow =
+    effect {
+      _ <- match verificationRes.ok
+        | true => Effect.void
+        | false => Effect.fail("Verification failed: " + verificationRes.stdout + " " + verificationRes.stderr)
 
-  // A prior attempt may have pushed successfully and then failed while the
-  // caller persisted board archival. Treat the task-specific landing commit as
-  // evidence that this request already landed, so retrying is idempotent.
-  landedRes = git(["log", "refs/remotes/origin/" + baseBranch, "--format=%H", "--grep=^" + req.taskId + ": landed$"], tempDir)
-  when (landedRes.exitCode #= 0 and not (landedRes.stdout
-  |> trim
-  |> isEmpty)) => {
-    taskId: req.taskId
-    success: true
-    commitHash: Option.some(landedRes.stdout
-    |> trim
-    |> split("\n")
-    |> head
-    |> getOrElse(() => ""))
-    "error": Option.none()
-  }
-  checkoutRes = git(["checkout", "--quiet", "-B", baseBranch, "refs/remotes/origin/" + baseBranch], tempDir)
-  when (not (checkoutRes.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Cannot check out base branch: " + messageOf(checkoutRes))
-  }
-  mergeRes = git(["merge", "--squash", "refs/remotes/origin/" + req.branch], tempDir)
-  when (not (mergeRes.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Squash merge conflict; recovery workspace: " + tempDir + ". " + messageOf(mergeRes))
-  }
-  commitRes = git(["commit", "-m", "" + req.taskId + ": landed"], tempDir)
-  when (not (commitRes.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Landing commit failed; recovery workspace: " + tempDir + ". " + messageOf(commitRes))
-  }
-  hashRes = git(["rev-parse", "HEAD"], tempDir)
-  latestBaseRes = git(["fetch", "origin", baseBranch], tempDir)
-  when (not (latestBaseRes.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Cannot refresh base before push; recovery commit " + hashRes.stdout + " retained at " + tempDir + ". " + messageOf(latestBaseRes))
-  }
-  baseHeadRes = git(["rev-parse", "refs/remotes/origin/" + baseBranch], tempDir)
-  parentRes = git(["rev-parse", "HEAD^"], tempDir)
-  when (not (baseHeadRes.exitCode #= 0) or not (parentRes.exitCode #= 0) or not (baseHeadRes.stdout #= parentRes.stdout)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Base advanced during landing; recovery commit " + hashRes.stdout + " retained at " + tempDir)
-  }
-  pushRes = git(["push", "origin", "HEAD:refs/heads/" + baseBranch], tempDir)
-  when (not (pushRes.exitCode #= 0)) => {
-    taskId: req.taskId
-    success: false
-    commitHash: Option.none()
-    "error": Option.some("Push failed; recovery commit " + hashRes.stdout + " retained at " + tempDir + ". " + messageOf(pushRes))
-  }
-  => {
-    taskId: req.taskId
-    success: true
-    commitHash: Option.some(hashRes.stdout)
-    "error": Option.none()
-  }
+      zeroSentinel = "__IS_ZERO__"
+      _ <- match isZero
+        | true => Effect.fail(zeroSentinel)
+        | false => Effect.void
+
+      remoteRes = git(["remote", "get-url", "origin"], req.workspace)
+      _ <- match remoteRes.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail("Cannot resolve origin: " + messageOf(remoteRes))
+
+      remote = remoteRes.stdout
+      tempRes = Bun.spawnSync(["mktemp", "-d"], { stdout: "pipe", stderr: "pipe" })
+      tempDir = tempRes.stdout.toString() |> trim
+
+      cloneRes = git(["clone", "--quiet", remote, tempDir], req.workspace)
+      _ <- match cloneRes.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail("Cannot create isolated landing repository: " + messageOf(cloneRes))
+
+      fetchRes = git(["fetch", "origin", baseBranch, req.branch], tempDir)
+      _ <- match fetchRes.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail("Branch or base validation failed: " + messageOf(fetchRes))
+
+      baseCheck = git(["show-ref", "--verify", "--quiet", "refs/remotes/origin/" + baseBranch], tempDir)
+      branchCheck = git(["show-ref", "--verify", "--quiet", "refs/remotes/origin/" + req.branch], tempDir)
+      missingBranchMsg = "Configured base branch or task branch does not exist on origin"
+      _ <- match baseCheck.exitCode #= 0 and branchCheck.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail(missingBranchMsg)
+
+      landedRes = git([
+        "log",
+        "refs/remotes/origin/" + baseBranch,
+        "--format=%H",
+        "--grep=^" + req.taskId + ": landed$"
+      ], tempDir)
+      alreadyLanded = landedRes.exitCode #= 0 and not (landedRes.stdout
+      |> trim
+      |> isEmpty)
+      _ <- match alreadyLanded
+        | false => Effect.void
+        | true =>
+            firstHash =
+              landedRes.stdout
+              |> trim
+              |> split("\n")
+              |> head
+              |> getOrElse(() => "")
+            Effect.fail("__ALREADY_LANDED__:" + firstHash)
+
+      checkoutRes = git(["checkout", "--quiet", "-B", baseBranch, "refs/remotes/origin/" + baseBranch], tempDir)
+      _ <- match checkoutRes.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail("Cannot check out base branch: " + messageOf(checkoutRes))
+
+      mergeRes = git(["merge", "--squash", "refs/remotes/origin/" + req.branch], tempDir)
+      _ <- match mergeRes.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail("Squash merge conflict; recovery workspace: " + tempDir + ". " + messageOf(mergeRes))
+
+      commitRes = git(["commit", "-m", "" + req.taskId + ": landed"], tempDir)
+      _ <- match commitRes.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail("Landing commit failed; recovery workspace: " + tempDir + ". " + messageOf(commitRes))
+
+      hashRes = git(["rev-parse", "HEAD"], tempDir)
+      latestBaseRes = git(["fetch", "origin", baseBranch], tempDir)
+      _ <- match latestBaseRes.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail("Cannot refresh base before push; recovery commit " + hashRes.stdout + " retained at " + tempDir + ". " + messageOf(latestBaseRes))
+
+      baseHeadRes = git(["rev-parse", "refs/remotes/origin/" + baseBranch], tempDir)
+      parentRes = git(["rev-parse", "HEAD^"], tempDir)
+      baseAdvanced = not (baseHeadRes.exitCode #= 0) or not (parentRes.exitCode #= 0) or not (baseHeadRes.stdout #= parentRes.stdout)
+      _ <- match baseAdvanced
+        | false => Effect.void
+        | true => Effect.fail("Base advanced during landing; recovery commit " + hashRes.stdout + " retained at " + tempDir)
+
+      pushRes = git(["push", "origin", "HEAD:refs/heads/" + baseBranch], tempDir)
+      _ <- match pushRes.exitCode #= 0
+        | true => Effect.void
+        | false => Effect.fail("Push failed; recovery commit " + hashRes.stdout + " retained at " + tempDir + ". " + messageOf(pushRes))
+
+      => hashRes.stdout
+    }
+
+  handledWorkflow =
+    workflow
+    |> Effect.map((hash) => succeedLanding(req.taskId, Option.some(hash)))
+    |> Effect.catch((err: String) => {
+      isZeroErr = err #= "__IS_ZERO__"
+      alreadyLanded = err |> String.startsWith("__ALREADY_LANDED__:")
+      => match
+        | isZeroErr => Effect.sync(() => succeedLanding(req.taskId, Option.none()))
+        | alreadyLanded => Effect.sync(() => succeedLanding(req.taskId, Option.some(err |> String.substring(19))))
+        | _ => Effect.sync(() => failLanding(req.taskId, err))
+    })
+  finalResult <- handledWorkflow
+  => finalResult
 }
 
 export createMergeTrain = (capacity: Number) => effect {

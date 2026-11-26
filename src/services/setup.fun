@@ -127,9 +127,14 @@ export scaffoldBoardMarkdownWorkflow = (boardDir: String, devAgentCount: Number 
   |> Effect.forEach((item) => effect {
     filePath = path.join(boardDir, item.name)
     ex <- fs.exists(filePath)
-    when (ex) => Option.none()
-    _ <- fs.writeFileString(filePath, item.content)
-    => Option.some(item.name)
+    resOpt <- match ex
+      | true => Effect.succeed(Option.none())
+      | false => effect {
+        _ <- fs.writeFileString(filePath, item.content)
+        => Option.some(item.name)
+      }
+
+    => resOpt
   })
 
   filesCreated = results |> Array.getSomes
@@ -151,113 +156,205 @@ export checkoutMainBranch = (wsPath: String) =>
     match hasMain.exitCode #= 0
       | true => runGitCommand(["checkout", "main"], wsPath)
       | false => runGitCommand(["checkout", "-b", "main"], wsPath)
-  when (checkoutRes.exitCode #= 0) => {
-    ok: true
-    message: match hasMain.exitCode #= 0
+  checkoutMsg =
+    match hasMain.exitCode #= 0
       | true => "Checked out main"
       | false => "Created and checked out main"
-  }
-  => {
-    ok: false
-    message: "Failed to checkout main"
-  }
+  => match checkoutRes.exitCode #= 0
+    | true => {
+      ok: true
+      message: checkoutMsg
+    }
+    | false => {
+      ok: false
+      message: "Failed to checkout main"
+    }
 
-export ensureCleanGitMain = (wsPath: String) =>
-  isGit = runGitCommand(["rev-parse", "--is-inside-work-tree"], wsPath)
-  when (isGit.exitCode #! 0 or isGit.stdout #! "true") => {
-    ok: false
-    message: "Not a git repository: " + wsPath
-  }
+formatNonMainStatus = (wsPath: String, isClean: Boolean, currentBranch: String) =>
+  branchLabel =
+    match currentBranch #= ""
+      | true => "unknown"
+      | false => currentBranch
+  => match isClean
+    | true => checkoutMainBranch(wsPath)
+    | false => {
+      ok: false
+      message: "On branch " + branchLabel + " (clean: false)"
+    }
 
+checkCleanGitMain = (wsPath: String) =>
   status = runGitCommand(["status", "--porcelain"], wsPath)
   isClean = status.exitCode #= 0 and status.stdout #= ""
-
   branchRes = runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], wsPath)
   currentBranch =
     match branchRes.exitCode #= 0
       | true => branchRes.stdout
       | false => ""
-
   cleanMsg =
     match isClean
       | true => "Clean on main"
       | false => "Uncommitted changes on main"
+  => match currentBranch #= "main"
+    | true => {
+      ok: isClean
+      message: cleanMsg
+    }
+    | false => formatNonMainStatus(wsPath, isClean, currentBranch)
 
-  when (currentBranch #= "main") => {
-    ok: isClean
-    message: cleanMsg
-  }
+export ensureCleanGitMain = (wsPath: String) =>
+  isGit = runGitCommand(["rev-parse", "--is-inside-work-tree"], wsPath)
+  => match isGit.exitCode #! 0 or isGit.stdout #! "true"
+    | true => {
+      ok: false
+      message: "Not a git repository: " + wsPath
+    }
+    | false => checkCleanGitMain(wsPath)
 
-  when (isClean) => checkoutMainBranch(wsPath)
+addWorktreeBranch = (baseRepoPath: String, worktreePath: String, branch: String) =>
+  addRes = runGitCommand(["worktree", "add", worktreePath, branch], baseRepoPath)
+  addNewBranchRes = runGitCommand(["worktree", "add", "-b", branch, worktreePath, "HEAD"], baseRepoPath)
+  failErr =
+    match addNewBranchRes.stderr #= ""
+      | true => addRes.stderr
+      | false => addNewBranchRes.stderr
+  => match
+    | addRes.exitCode #= 0 => {
+      ok: true
+      path: worktreePath
+      message: "Added worktree on branch " + branch
+    }
+    | addNewBranchRes.exitCode #= 0 => {
+      ok: true
+      path: worktreePath
+      message: "Added worktree on new branch " + branch
+    }
+    | _ => {
+      ok: false
+      path: worktreePath
+      message: "Failed to create worktree: " + failErr
+    }
 
-  branchLabel =
-    match currentBranch #= ""
-      | true => "unknown"
-      | false => currentBranch
-  cleanStr = "false"
-
-  => {
-    ok: false
-    message: "On branch " + branchLabel + " (clean: " + cleanStr + ")"
-  }
-
-export createWorktreeWorkspaceWorkflow = (baseRepoPath: String, worktreePath: String, branch: String = "main") => effect {
+createMissingWorktree = (baseRepoPath: String, worktreePath: String, branch: String) => effect {
   fs <- FileSystem.FileSystem
   path <- Path.Path
-
-  baseExists <- fs.exists(baseRepoPath)
-  when (not baseExists) => {
-    ok: false
-    path: worktreePath
-    message: "Base repository does not exist: " + baseRepoPath
-  }
-
-  wtExists <- fs.exists(worktreePath)
-  when (wtExists) => {
-    ok: true
-    path: worktreePath
-    message: "Worktree path already exists"
-  }
-
   parentDir = path.dirname(worktreePath)
   parentEx <- fs.exists(parentDir)
   _ <- match not parentEx
     | true => fs.makeDirectory(parentDir, { recursive: true })
     | false => Effect.void
+  => addWorktreeBranch(baseRepoPath, worktreePath, branch)
+}
 
-  addRes = runGitCommand(["worktree", "add", worktreePath, branch], baseRepoPath)
-  when (addRes.exitCode #= 0) => {
-    ok: true
-    path: worktreePath
-    message: "Added worktree on branch " + branch
-  }
+export createWorktreeWorkspaceWorkflow = (baseRepoPath: String, worktreePath: String, branch: String = "main") => effect {
+  fs <- FileSystem.FileSystem
 
-  addNewBranchRes = runGitCommand(["worktree", "add", "-b", branch, worktreePath, "HEAD"], baseRepoPath)
-  when (addNewBranchRes.exitCode #= 0) => {
-    ok: true
-    path: worktreePath
-    message: "Added worktree on new branch " + branch
-  }
-
-  failErr =
-    match addNewBranchRes.stderr #= ""
-      | true => addRes.stderr
-      | false => addNewBranchRes.stderr
-
-  => {
-    ok: false
-    path: worktreePath
-    message: "Failed to create worktree: " + failErr
-  }
+  baseExists <- fs.exists(baseRepoPath)
+  wtExists <- fs.exists(worktreePath)
+  res <- match
+    | not baseExists => Effect.succeed({
+      ok: false
+      path: worktreePath
+      message: "Base repository does not exist: " + baseRepoPath
+    })
+    | wtExists => Effect.succeed({
+      ok: true
+      path: worktreePath
+      message: "Worktree path already exists"
+    })
+    | _ => createMissingWorktree(baseRepoPath, worktreePath, branch)
+  => res
 }
 
 export createWorktreeWorkspaceSync = (baseRepoPath: String, worktreePath: String, branch: String = "main") => Effect.runSync(createWorktreeWorkspaceWorkflow(baseRepoPath, worktreePath, branch)
-|> provide(SyncServices.layer))
+|> Effect.provide(SyncServices.layer))
+
+initExistingDirRepo = (wsPath: String) => effect {
+  fs <- FileSystem.FileSystem
+  path <- Path.Path
+  _init = runGitCommand(["init", "-b", "main"], wsPath)
+  headCheck = runGitCommand(["rev-parse", "HEAD"], wsPath)
+  _ <- match headCheck.exitCode #! 0
+    | true => effect {
+      _ <- fs.writeFileString(path.join(wsPath, "README.md"), "# Slopboss Workspace\n")
+      _add = runGitCommand(["add", "-A"], wsPath)
+      _commit = runGitCommand(["commit", "-m", "Initial commit on main"], wsPath)
+      => Void
+    }
+    | false => Effect.void
+  => {
+    ok: true
+    path: wsPath
+    method: "init"
+    message: "Initialized git in existing directory"
+  }
+}
+
+tryCloneArgs = (wsPath: String, enabled: Boolean, gitArgs: Array<String>, method: String, msg: String) =>
+  res =
+    Option.some(enabled)
+    |> Option.filter((ok) => ok)
+    |> Option.map((_) => runGitCommand(gitArgs))
+    |> Option.filter((r) => r.exitCode #= 0)
+    |> Option.map((_) => {
+      _clean = ensureCleanGitMain(wsPath)
+      => {
+        ok: true
+        path: wsPath
+        method: method
+        message: msg
+      }
+    })
+  => res
+
+createFreshGitRepo = (wsPath: String) => effect {
+  fs <- FileSystem.FileSystem
+  path <- Path.Path
+  _ <- fs.makeDirectory(wsPath, { recursive: true })
+  _dirInit = runGitCommand(["init", "-b", "main"], wsPath)
+  readmeP = path.join(wsPath, "README.md")
+  _ <- fs.writeFileString(readmeP, "# Slopboss Workspace\n")
+  _dirAdd = runGitCommand(["add", "-A"], wsPath)
+  _dirCommit = runGitCommand(["commit", "-m", "Initial commit on main"], wsPath)
+  => {
+    ok: true
+    path: wsPath
+    method: "init"
+    message: "Initialized local git repository on main"
+  }
+}
+
+initNewWorkspaceRepo = (wsPath: String, repoUrl: String, fallbackBaseRepo: String) => effect {
+  fs <- FileSystem.FileSystem
+  path <- Path.Path
+  parentDir = path.dirname(wsPath)
+  parentEx <- fs.exists(parentDir)
+  _ <- match not parentEx
+    | true => fs.makeDirectory(parentDir, { recursive: true })
+    | false => Effect.void
+
+  hasRepo = repoUrl #! ""
+  branchCloneRes = tryCloneArgs(wsPath, hasRepo, ["clone", "--branch", "main", repoUrl, wsPath], "clone", "Cloned from " + repoUrl)
+  defaultCloneRes =
+    branchCloneRes
+    |> Option.orElse(() => tryCloneArgs(wsPath, hasRepo, ["clone", repoUrl, wsPath], "clone", "Cloned from " + repoUrl))
+
+  hasFallback = fallbackBaseRepo #! "" and fallbackBaseRepo #! wsPath
+  fallbackExists <- match hasFallback and Option.isNone(defaultCloneRes)
+    | true => fs.exists(fallbackBaseRepo)
+    | false => Effect.succeed(false)
+
+  cloneOpt =
+    defaultCloneRes
+    |> Option.orElse(() => tryCloneArgs(wsPath, hasFallback and fallbackExists, ["clone", fallbackBaseRepo, wsPath], "clone-fallback", "Cloned from fallback workspace " + fallbackBaseRepo))
+
+  finalInitRes <- match cloneOpt
+    | Some(r) => Effect.succeed(r)
+    | None => createFreshGitRepo(wsPath)
+  => finalInitRes
+}
 
 export initWorkspaceRepoWorkflow = (wsPath: String, repoUrl: String = "", fallbackBaseRepo: String = "") => effect {
   fs <- FileSystem.FileSystem
-  path <- Path.Path
-
   wsExists <- fs.exists(wsPath)
   gitCheck =
     match wsExists
@@ -269,159 +366,23 @@ export initWorkspaceRepoWorkflow = (wsPath: String, repoUrl: String = "", fallba
       }
 
   isExisting = wsExists and gitCheck.exitCode #= 0 and gitCheck.stdout #= "true"
-  _clean1 =
-    match isExisting
-      | true => ensureCleanGitMain(wsPath)
-      | false => { ok: false, message: "" }
 
-  when (isExisting) => {
-    ok: true
-    path: wsPath
-    method: "existing"
-    message: "Existing git repository preserved"
-  }
-
-  _init =
-    match wsExists
-      | true => runGitCommand(["init", "-b", "main"], wsPath)
-      | false => {
-        exitCode: 0
-        stdout: ""
-        stderr: ""
-      }
-
-  headCheck =
-    match wsExists
-      | true => runGitCommand(["rev-parse", "HEAD"], wsPath)
-      | false => {
-        exitCode: 0
-        stdout: ""
-        stderr: ""
-      }
-
-  _ <- match wsExists and headCheck.exitCode #! 0
-    | true => fs.writeFileString(path.join(wsPath, "README.md"), "# Slopboss Workspace\n")
-    | false => Effect.void
-
-  _add =
-    match wsExists and headCheck.exitCode #! 0
-      | true => runGitCommand(["add", "-A"], wsPath)
-      | false => {
-        exitCode: 0
-        stdout: ""
-        stderr: ""
-      }
-
-  _commit =
-    match wsExists and headCheck.exitCode #! 0
-      | true => runGitCommand(["commit", "-m", "Initial commit on main"], wsPath)
-      | false => {
-        exitCode: 0
-        stdout: ""
-        stderr: ""
-      }
-
-  when (wsExists) => {
-    ok: true
-    path: wsPath
-    method: "init"
-    message: "Initialized git in existing directory"
-  }
-
-  parentDir = path.dirname(wsPath)
-  parentEx <- fs.exists(parentDir)
-  _ <- match not parentEx
-    | true => fs.makeDirectory(parentDir, { recursive: true })
-    | false => Effect.void
-
-  cloneWithBranch =
-    match repoUrl #! ""
-      | true => runGitCommand(["clone", "--branch", "main", repoUrl, wsPath])
-      | false => {
-        exitCode: 1
-        stdout: ""
-        stderr: ""
-      }
-
-  isCloneWithBranch = repoUrl #! "" and cloneWithBranch.exitCode #= 0
-  _cleanBranch =
-    match isCloneWithBranch
-      | true => ensureCleanGitMain(wsPath)
-      | false => { ok: false, message: "" }
-
-  when (isCloneWithBranch) => {
-    ok: true
-    path: wsPath
-    method: "clone"
-    message: "Cloned from " + repoUrl
-  }
-
-  cloneDefault =
-    match repoUrl #! ""
-      | true => runGitCommand(["clone", repoUrl, wsPath])
-      | false => {
-        exitCode: 1
-        stdout: ""
-        stderr: ""
-      }
-
-  isCloneDefault = repoUrl #! "" and cloneDefault.exitCode #= 0
-  _cleanDefault =
-    match isCloneDefault
-      | true => ensureCleanGitMain(wsPath)
-      | false => { ok: false, message: "" }
-
-  when (isCloneDefault) => {
-    ok: true
-    path: wsPath
-    method: "clone"
-    message: "Cloned from " + repoUrl
-  }
-
-  hasFallback = fallbackBaseRepo #! "" and fallbackBaseRepo #! wsPath
-  fallbackExists <- match hasFallback
-    | true => fs.exists(fallbackBaseRepo)
-    | false => Effect.succeed(false)
-
-  cloneFromFallback =
-    match hasFallback and fallbackExists
-      | true => runGitCommand(["clone", fallbackBaseRepo, wsPath])
-      | false => {
-        exitCode: 1
-        stdout: ""
-        stderr: ""
-      }
-
-  isFallbackClone = hasFallback and fallbackExists and cloneFromFallback.exitCode #= 0
-  _clean2 =
-    match isFallbackClone
-      | true => ensureCleanGitMain(wsPath)
-      | false => { ok: false, message: "" }
-
-  when (isFallbackClone) => {
-    ok: true
-    path: wsPath
-    method: "clone-fallback"
-    message: "Cloned from fallback workspace " + fallbackBaseRepo
-  }
-
-  _ <- fs.makeDirectory(wsPath, { recursive: true })
-  _dirInit = runGitCommand(["init", "-b", "main"], wsPath)
-  readmeP = path.join(wsPath, "README.md")
-  _ <- fs.writeFileString(readmeP, "# Slopboss Workspace\n")
-  _dirAdd = runGitCommand(["add", "-A"], wsPath)
-  _dirCommit = runGitCommand(["commit", "-m", "Initial commit on main"], wsPath)
-
-  => {
-    ok: true
-    path: wsPath
-    method: "init"
-    message: "Initialized local git repository on main"
-  }
+  res <- match
+    | isExisting =>
+        _clean1 = ensureCleanGitMain(wsPath)
+        Effect.succeed({
+          ok: true
+          path: wsPath
+          method: "existing"
+          message: "Existing git repository preserved"
+        })
+    | wsExists => initExistingDirRepo(wsPath)
+    | _ => initNewWorkspaceRepo(wsPath, repoUrl, fallbackBaseRepo)
+  => res
 }
 
 export initWorkspaceRepoSync = (wsPath: String, repoUrl: String = "", fallbackBaseRepo: String = "") => Effect.runSync(initWorkspaceRepoWorkflow(wsPath, repoUrl, fallbackBaseRepo)
-|> provide(SyncServices.layer))
+|> Effect.provide(SyncServices.layer))
 
 export provisionWorkspacesWorkflow = (boardDir: String, repoUrl: String, devAgentCount: Number = 2) => effect {
   fs <- FileSystem.FileSystem
@@ -450,8 +411,9 @@ export provisionWorkspacesWorkflow = (boardDir: String, repoUrl: String, devAgen
     agentWsPath = path.join(workspacesDir, agentWsName)
     exAgent <- fs.exists(agentWsPath)
     _ <- initWorkspaceRepoWorkflow(agentWsPath, repoUrl, repoTlPath)
-    when (not exAgent) => Option.some(agentWsName)
-    => Option.none()
+    => match exAgent
+      | false => Option.some(agentWsName)
+      | true => Option.none()
   })
 
   created = tlCreated |> Array.appendAll(agentResults |> Array.getSomes)
@@ -460,93 +422,34 @@ export provisionWorkspacesWorkflow = (boardDir: String, repoUrl: String, devAgen
 
 export provisionWorkspaces = (boardDir: String, repoUrl: String, devAgentCount: Number = 2) => effect {
   res <- provisionWorkspacesWorkflow(boardDir, repoUrl, devAgentCount)
-  |> provide(BunServices.layer)
+  |> Effect.provide(BunServices.layer)
   => res
 }
 
 export provisionWorkspacesSync = (boardDir: String, repoUrl: String, devAgentCount: Number = 2) => Effect.runSync(provisionWorkspacesWorkflow(boardDir, repoUrl, devAgentCount)
-|> provide(SyncServices.layer))
+|> Effect.provide(SyncServices.layer))
 
-export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number = 2) => effect {
-  fs <- FileSystem.FileSystem
-  path <- Path.Path
-
-  count = Math.max(1, devAgentCount)
-  workspacesDir = path.join(boardDir, "workspaces")
-
-  boardEx <- fs.exists(boardDir)
-  when (not boardEx) => {
-    name: "workspaces"
-    ok: false
-    required: true
-    devAgentCount: count
-    workspacesDir: workspacesDir
-    workspaces: []
-    message: "Board directory does not exist: " + boardDir
-  }
-
-  boardStat <- fs.stat(boardDir)
-  |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
-  when (boardStat.type #! "Directory") => {
-    name: "workspaces"
-    ok: false
-    required: true
-    devAgentCount: count
-    workspacesDir: workspacesDir
-    workspaces: []
-    message: "Board directory does not exist: " + boardDir
-  }
-
-  wsEx <- fs.exists(workspacesDir)
-  when (not wsEx) => {
-    name: "workspaces"
-    ok: false
-    required: true
-    devAgentCount: count
-    workspacesDir: workspacesDir
-    workspaces: []
-    message: "Workspaces directory does not exist: " + workspacesDir
-  }
-
-  wsStat <- fs.stat(workspacesDir)
-  |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
-  when (wsStat.type #! "Directory") => {
-    name: "workspaces"
-    ok: false
-    required: true
-    devAgentCount: count
-    workspacesDir: workspacesDir
-    workspaces: []
-    message: "Workspaces directory does not exist: " + workspacesDir
-  }
-
-  agentNames = Array.range(1, count) |> map((i) => "repo-agent-" + i)
-  workspaceNames = ["repo-tl"] |> Array.appendAll(agentNames)
-
-  checkResults <- workspaceNames
-  |> Effect.forEach((name) => effect {
-    wsPath = path.join(workspacesDir, name)
-    ex <- fs.exists(wsPath)
-    statRes <- fs.stat(wsPath)
-    |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
-    isDir = ex and statRes.type #= "Directory"
-
-    when (not isDir) => {
-      info: {
-        name: name
-        path: wsPath
-        exists: false
-        isGitRepo: false
-        currentBranch: ""
-        isClean: false
-      }
-      failures: [name + " does not exist"]
-    }
-
-    gitCheck = runGitCommand(["rev-parse", "--is-inside-work-tree"], wsPath)
-    isGitRepo = gitCheck.exitCode #= 0 and gitCheck.stdout #= "true"
-
-    when (not isGitRepo) => {
+checkSingleWorkspaceGit = (name: String, wsPath: String) =>
+  gitCheck = runGitCommand(["rev-parse", "--is-inside-work-tree"], wsPath)
+  isGitRepo = gitCheck.exitCode #= 0 and gitCheck.stdout #= "true"
+  branchRes = runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], wsPath)
+  currentBranch =
+    Option.some(branchRes.stdout)
+    |> Option.filter((_) => branchRes.exitCode #= 0)
+    |> Option.getOrElse(() => "")
+  statusRes = runGitCommand(["status", "--porcelain"], wsPath)
+  isClean = statusRes.exitCode #= 0 and statusRes.stdout #= ""
+  branchFail =
+    Option.some([name + " is on branch '" + currentBranch + "' (expected 'main')"])
+    |> Option.filter((_) => currentBranch #! "main")
+    |> Option.getOrElse(() => [])
+  cleanFail =
+    Option.some([name + " has uncommitted changes"])
+    |> Option.filter((_) => not isClean)
+    |> Option.getOrElse(() => [])
+  allFails = branchFail |> Array.appendAll(cleanFail)
+  => match isGitRepo
+    | false => {
       info: {
         name: name
         path: wsPath
@@ -557,29 +460,7 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
       }
       failures: [name + " is not a git repository"]
     }
-
-    branchRes = runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], wsPath)
-    currentBranch =
-      match branchRes.exitCode #= 0
-        | true => branchRes.stdout
-        | false => ""
-
-    statusRes = runGitCommand(["status", "--porcelain"], wsPath)
-    isClean = statusRes.exitCode #= 0 and statusRes.stdout #= ""
-
-    branchFail =
-      match currentBranch #! "main"
-        | true => [name + " is on branch '" + currentBranch + "' (expected 'main')"]
-        | false => []
-
-    cleanFail =
-      match not isClean
-        | true => [name + " has uncommitted changes"]
-        | false => []
-
-    allFails = branchFail |> Array.appendAll(cleanFail)
-
-    => {
+    | true => {
       info: {
         name: name
         path: wsPath
@@ -590,9 +471,37 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
       }
       failures: allFails
     }
-  })
 
-  workspaces = checkResults |> map((r) => r.info)
+checkSingleWorkspace = (workspacesDir: String, name: String) => effect {
+  fs <- FileSystem.FileSystem
+  path <- Path.Path
+  wsPath = path.join(workspacesDir, name)
+  ex <- fs.exists(wsPath)
+  statRes <- fs.stat(wsPath) |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
+  isDir = ex and statRes.type #= "Directory"
+  => match isDir
+    | false => {
+      info: {
+        name: name
+        path: wsPath
+        exists: false
+        isGitRepo: false
+        currentBranch: ""
+        isClean: false
+      }
+      failures: [name + " does not exist"]
+    }
+    | true => checkSingleWorkspaceGit(name, wsPath)
+}
+
+verifyWorkspacesContents = (workspacesDir: String, count: Number) => effect {
+  agentNames = Array.range(1, count) |> Array.map((i) => "repo-agent-" + i)
+  workspaceNames = ["repo-tl"] |> Array.appendAll(agentNames)
+
+  checkResults <- workspaceNames
+  |> Effect.forEach((name) => checkSingleWorkspace(workspacesDir, name))
+
+  workspaces = checkResults |> Array.map((r) => r.info)
   failures = checkResults |> Array.flatMap((r) => r.failures)
 
   isOk = failures.length #= 0
@@ -614,6 +523,46 @@ export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number 
   }
 }
 
+export verifyWorkspacesReadyWorkflow = (boardDir: String, devAgentCount: Number = 2) => effect {
+  fs <- FileSystem.FileSystem
+  path <- Path.Path
+
+  count = Math.max(1, devAgentCount)
+  workspacesDir = path.join(boardDir, "workspaces")
+
+  boardEx <- fs.exists(boardDir)
+  boardStat <- fs.stat(boardDir)
+  |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
+  wsEx <- fs.exists(workspacesDir)
+  wsStat <- fs.stat(workspacesDir)
+  |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
+
+  boardInvalid = not boardEx or boardStat.type #! "Directory"
+  wsInvalid = not wsEx or wsStat.type #! "Directory"
+
+  res <- match
+    | boardInvalid => Effect.succeed({
+      name: "workspaces"
+      ok: false
+      required: true
+      devAgentCount: count
+      workspacesDir: workspacesDir
+      workspaces: []
+      message: "Board directory does not exist: " + boardDir
+    })
+    | wsInvalid => Effect.succeed({
+      name: "workspaces"
+      ok: false
+      required: true
+      devAgentCount: count
+      workspacesDir: workspacesDir
+      workspaces: []
+      message: "Workspaces directory does not exist: " + workspacesDir
+    })
+    | _ => verifyWorkspacesContents(workspacesDir, count)
+  => res
+}
+
 export verifyWorkspacesReady = (boardDir: String, devAgentCount: Number = 2) => effect {
   res <- verifyWorkspacesReadyWorkflow(boardDir, devAgentCount)
   |> provide(BunServices.layer)
@@ -621,7 +570,7 @@ export verifyWorkspacesReady = (boardDir: String, devAgentCount: Number = 2) => 
 }
 
 export verifyWorkspacesReadySync = (boardDir: String, devAgentCount: Number = 2) => Effect.runSync(verifyWorkspacesReadyWorkflow(boardDir, devAgentCount)
-|> provide(SyncServices.layer))
+|> Effect.provide(SyncServices.layer))
 
 export initBoardStructureWorkflow = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => effect {
   count = Math.max(1, devAgentCount)
@@ -665,4 +614,4 @@ export initBoardStructure = (boardDir: String, repoUrl: String = "", devAgentCou
 }
 
 export initBoardStructureSync = (boardDir: String, repoUrl: String = "", devAgentCount: Number = 2, originUrl: String = "", baseBranch: String = "main", provider: String = "agy") => Effect.runSync(initBoardStructureWorkflow(boardDir, repoUrl, devAgentCount, originUrl, baseBranch, provider)
-|> provide(SyncServices.layer))
+|> Effect.provide(SyncServices.layer))

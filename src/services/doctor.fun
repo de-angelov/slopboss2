@@ -26,22 +26,10 @@ export checkGitInstalledWorkflow = (gitCmd: String) => effect {
     match outText #= ""
       | true => "Git is installed"
       | false => outText
-  when (res.ok) => {
-    name: "git"
-    ok: true
-    message: successMsg
-    required: true
-  }
   threwMsg =
     match res.stderr #= ""
       | true => "git executable not found in PATH"
       | false => res.stderr
-  when (res.threw) => {
-    name: "git"
-    ok: false
-    message: threwMsg
-    required: true
-  }
   defaultErr =
     match res.stdout #= ""
       | true => "git command exited with code " + res.exitCode
@@ -50,12 +38,26 @@ export checkGitInstalledWorkflow = (gitCmd: String) => effect {
     match res.stderr #= ""
       | true => defaultErr
       | false => res.stderr
-  => {
-    name: "git"
-    ok: false
-    message: err
-    required: true
-  }
+
+  => match
+    | res.ok => {
+      name: "git"
+      ok: true
+      message: successMsg
+      required: true
+    }
+    | res.threw => {
+      name: "git"
+      ok: false
+      message: threwMsg
+      required: true
+    }
+    | _ => {
+      name: "git"
+      ok: false
+      message: err
+      required: true
+    }
 }
 
 export checkGitInstalledSync = (gitCmd: String = "git") => Effect.runSync(checkGitInstalledWorkflow(gitCmd))
@@ -77,22 +79,10 @@ export checkBunInstalledWorkflow = (bunCmd: String) => effect {
     match outText #= ""
       | true => "Bun is installed"
       | false => "bun " + outText
-  when (res.ok) => {
-    name: "bun"
-    ok: true
-    message: successMsg
-    required: true
-  }
   threwMsg =
     match res.stderr #= ""
       | true => "bun executable not found in PATH"
       | false => res.stderr
-  when (res.threw) => {
-    name: "bun"
-    ok: false
-    message: threwMsg
-    required: true
-  }
   defaultErr =
     match res.stdout #= ""
       | true => "bun command exited with code " + res.exitCode
@@ -101,12 +91,26 @@ export checkBunInstalledWorkflow = (bunCmd: String) => effect {
     match res.stderr #= ""
       | true => defaultErr
       | false => res.stderr
-  => {
-    name: "bun"
-    ok: false
-    message: err
-    required: true
-  }
+
+  => match
+    | res.ok => {
+      name: "bun"
+      ok: true
+      message: successMsg
+      required: true
+    }
+    | res.threw => {
+      name: "bun"
+      ok: false
+      message: threwMsg
+      required: true
+    }
+    | _ => {
+      name: "bun"
+      ok: false
+      message: err
+      required: true
+    }
 }
 
 export checkBunInstalledSync = (bunCmd: String = "bun") => Effect.runSync(checkBunInstalledWorkflow(bunCmd))
@@ -121,6 +125,17 @@ export checkBunInstalledWith = (bunCmd: String) => effect {
   => res
 }
 
+providerLabel = (p: String): String =>
+  match p
+    | "agy" => "Antigravity CLI (agy)"
+    | "gemini" => "Gemini CLI"
+    | _ => p
+
+formatVerSuffix = (ver: String): String =>
+  match ver #= ""
+    | true => ""
+    | false => " (v" + ver + ")"
+
 export checkProviderInstalledWorkflow = (providers: Array<String>) => effect {
   listToCheck =
     match providers.length #= 0
@@ -131,26 +146,22 @@ export checkProviderInstalledWorkflow = (providers: Array<String>) => effect {
   _ =
     listToCheck
     |> forEach((p) => {
-      when (Option.isSome(found)) => true
-      res = safeSpawnSync([p, "--version"])
-      when (res.ok) {
-        ver = res.stdout |> trim
-        label =
-          match p
-            | "agy" => "Antigravity CLI (agy)"
-            | "gemini" => "Gemini CLI"
-            | _ => p
-        verSuffix =
-          match ver #= ""
-            | true => ""
-            | false => " (v" + ver + ")"
-        found = Option.some({
-          name: "provider"
-          ok: true
-          message: label + " available" + verSuffix
-          required: true
-        })
-      }
+      match Option.isSome(found)
+        | true => Void
+        | false =>
+            res = safeSpawnSync([p, "--version"])
+            when (res.ok) {
+              ver = res.stdout |> trim
+              label = providerLabel(p)
+              verSuffix = formatVerSuffix(ver)
+              found = Option.some({
+                name: "provider"
+                ok: true
+                message: label + " available" + verSuffix
+                required: true
+              })
+            }
+            => Void
       => true
     })
 
@@ -180,128 +191,124 @@ export checkProviderInstalledWith = (providers: Array<String>) => effect {
   => res
 }
 
-export checkBoardDirectoryWorkflow = (boardDir: String) => effect {
-  when (boardDir #= "") => {
-    name: "board"
-    ok: false
-    message: "Board directory does not exist: " + boardDir
-    required: true
-  }
+checkBoardFail = (msg: String): CheckResult => {
+  name: "board"
+  ok: false
+  message: msg
+  required: true
+}
 
+export checkBoardDirectoryWorkflow = (boardDir: String) => effect {
   fs <- FileSystem.FileSystem
   path <- Path.Path
 
-  exists <- fs.exists(boardDir)
-  when (not exists) => {
-    name: "board"
-    ok: false
-    message: "Board directory does not exist: " + boardDir
-    required: true
-  }
+  eff =
+    effect {
+      _ <- match boardDir #= ""
+        | true => Effect.fail("Board directory does not exist: " + boardDir)
+        | false => Effect.void
 
-  statRes <- fs.stat(boardDir)
-  |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
-  when (statRes.type #! "Directory") => {
-    name: "board"
-    ok: false
-    message: "Board path is not a directory: " + boardDir
-    required: true
-  }
+      exists <- fs.exists(boardDir)
+      _ <- match exists
+        | true => Effect.void
+        | false => Effect.fail("Board directory does not exist: " + boardDir)
 
-  requiredFiles = ["TASKS.md", "ARCHIVE.md", "AGENTS.md"]
-  missingFiles <- requiredFiles
-  |> Effect.filter((file) => effect {
-    filePath = path.join(boardDir, file)
-    fileEx <- fs.exists(filePath)
-    => not fileEx
-  })
+      statRes <- fs.stat(boardDir)
+      |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
+      _ <- match statRes.type #= "Directory"
+        | true => Effect.void
+        | false => Effect.fail("Board path is not a directory: " + boardDir)
 
-  when (missingFiles.length > 0) => {
-    name: "board"
-    ok: false
-    message: "Missing required board files in " + boardDir + ": " + (missingFiles |> join(", "))
-    required: true
-  }
+      requiredFiles = ["TASKS.md", "ARCHIVE.md", "AGENTS.md"]
+      filterMissing = (file: String) => effect {
+        filePath = path.join(boardDir, file)
+        fileEx <- fs.exists(filePath)
+        => not fileEx
+      }
 
-  => {
-    name: "board"
-    ok: true
-    message: "Board directory contains all required files (" + (requiredFiles |> join(", ")) + ")"
-    required: true
-  }
+      missingFiles <- Effect.filter(requiredFiles, filterMissing)
+      _ <- match missingFiles.length #= 0
+        | true => Effect.void
+        | false => Effect.fail("Missing required board files in " + boardDir + ": " + (missingFiles |> join(", ")))
+
+      => {
+        name: "board"
+        ok: true
+        message: "Board directory contains all required files (" + (requiredFiles |> join(", ")) + ")"
+        required: true
+      }
+    }
+
+  res <- eff |> Effect.catch((err) => Effect.sync(() => checkBoardFail("" + err)))
+  => res
 }
 
 export checkBoardDirectory = (boardDir: String) => effect {
-  res <- checkBoardDirectoryWorkflow(boardDir) |> provide(BunServices.layer)
+  res <- checkBoardDirectoryWorkflow(boardDir) |> Effect.provide(BunServices.layer)
   => res
 }
 
-export checkBoardDirectorySync = (boardDir: String) => Effect.runSync(checkBoardDirectoryWorkflow(boardDir) |> provide(SyncServices.layer))
+export checkBoardDirectorySync = (boardDir: String) => Effect.runSync(checkBoardDirectoryWorkflow(boardDir) |> Effect.provide(SyncServices.layer))
+
+checkWsFail = (msg: String): CheckResult => {
+  name: "workspaces"
+  ok: false
+  message: msg
+  required: true
+}
 
 export checkWorkspacesWorkflow = (boardDir: String) => effect {
-  when (boardDir #= "") => {
-    name: "workspaces"
-    ok: false
-    message: "Board directory does not exist: " + boardDir
-    required: true
-  }
-
   fs <- FileSystem.FileSystem
   path <- Path.Path
 
-  exists <- fs.exists(boardDir)
-  when (not exists) => {
-    name: "workspaces"
-    ok: false
-    message: "Board directory does not exist: " + boardDir
-    required: true
-  }
+  eff =
+    effect {
+      _ <- match boardDir #= ""
+        | true => Effect.fail("Board directory does not exist: " + boardDir)
+        | false => Effect.void
 
-  workspacesPath = path.join(boardDir, "workspaces")
-  wsExists <- fs.exists(workspacesPath)
-  when (not wsExists) => {
-    name: "workspaces"
-    ok: false
-    message: "Workspaces directory does not exist at " + workspacesPath
-    required: true
-  }
+      exists <- fs.exists(boardDir)
+      _ <- match exists
+        | true => Effect.void
+        | false => Effect.fail("Board directory does not exist: " + boardDir)
 
-  statRes <- fs.stat(workspacesPath)
-  |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
-  when (statRes.type #! "Directory") => {
-    name: "workspaces"
-    ok: false
-    message: "Workspaces path is not a directory: " + workspacesPath
-    required: true
-  }
+      workspacesPath = path.join(boardDir, "workspaces")
+      wsExists <- fs.exists(workspacesPath)
+      _ <- match wsExists
+        | true => Effect.void
+        | false => Effect.fail("Workspaces directory does not exist at " + workspacesPath)
 
-  accessEffect =
-    fs.access(workspacesPath, { readable: true, writable: true })
-    |> as(true)
-    |> Effect.catch((_) => Effect.succeed(false))
-  accessRes <- accessEffect
+      statRes <- fs.stat(workspacesPath)
+      |> Effect.catch((_) => Effect.succeed({ "type": "Unknown" }))
+      _ <- match statRes.type #= "Directory"
+        | true => Effect.void
+        | false => Effect.fail("Workspaces path is not a directory: " + workspacesPath)
 
-  when (not accessRes) => {
-    name: "workspaces"
-    ok: false
-    message: "Workspaces directory lacks read/write permissions: " + workspacesPath
-    required: true
-  }
+      accessRes <- fs.access(workspacesPath, { readable: true, writable: true })
+      |> as(true)
+      |> Effect.catch((_) => Effect.succeed(false))
+      _ <- match accessRes
+        | true => Effect.void
+        | false => Effect.fail("Workspaces directory lacks read/write permissions: " + workspacesPath)
 
-  => {
-    name: "workspaces"
-    ok: true
-    message: "Workspaces directory exists with read/write access: " + workspacesPath
-    required: true
-  }
-}
+      => {
+        name: "workspaces"
+        ok: true
+        message: "Workspaces directory exists with read/write access: " + workspacesPath
+        required: true
+      }
+    }
 
-export checkWorkspaces = (boardDir: String) => effect {
-  res <- checkWorkspacesWorkflow(boardDir) |> provide(BunServices.layer)
+  res <- eff |> Effect.catch((err) => Effect.sync(() => checkWsFail("" + err)))
   => res
 }
 
-export checkWorkspacesSync = (boardDir: String) => Effect.runSync(checkWorkspacesWorkflow(boardDir) |> provide(SyncServices.layer))
+export checkWorkspaces = (boardDir: String) => effect {
+  res <- checkWorkspacesWorkflow(boardDir) |> Effect.provide(BunServices.layer)
+  => res
+}
+
+export checkWorkspacesSync = (boardDir: String) => Effect.runSync(checkWorkspacesWorkflow(boardDir) |> Effect.provide(SyncServices.layer))
 
 export runDoctorWorkflow = (boardDir: String) => effect {
   gitCheck <- checkGitInstalledWorkflow("git")
@@ -325,8 +332,8 @@ export runDoctorWorkflow = (boardDir: String) => effect {
 }
 
 export runDoctor = (boardDir: String) => effect {
-  res <- runDoctorWorkflow(boardDir) |> provide(BunServices.layer)
+  res <- runDoctorWorkflow(boardDir) |> Effect.provide(BunServices.layer)
   => res
 }
 
-export runDoctorSync = (boardDir: String) => Effect.runSync(runDoctorWorkflow(boardDir) |> provide(SyncServices.layer))
+export runDoctorSync = (boardDir: String) => Effect.runSync(runDoctorWorkflow(boardDir) |> Effect.provide(SyncServices.layer))

@@ -10,13 +10,18 @@ export schema LiveViewOptions = {
   onTick?: Unknown
 }
 
+ObjSchema = Schema.declare(Predicate.isObject)
+FnSchema = Schema.declare(Predicate.isFunction)
+OptNumSchema = Schema.declare(Option.isOption)
+
 safeInvoke = (target: Unknown, method: String, args: Array<Unknown>) =>
   res =
     Effect.try(() => {
-      obj: Any = target
-      fnObj: Any = Reflect.get(obj, method)
-      when (not Predicate.isFunction(fnObj)) => true
-      Reflect.apply(fnObj, target, args)
+      objOpt =
+        Schema.decodeUnknownOption(ObjSchema)(target)
+        |> Option.orElse(() => Schema.decodeUnknownOption(FnSchema)(target))
+      fnOpt = Option.flatMap(objOpt, (obj) => Schema.decodeUnknownOption(FnSchema)(Reflect.get(obj, method)))
+      _applied = Option.map(fnOpt, (f) => Reflect.apply(f, target, args))
       => true
     })
     |> Effect.catch((_) => Effect.succeed(false))
@@ -28,16 +33,19 @@ resolveLaneId = (name: String): String =>
     name
     |> replace(RegExp("\\s+In Progress$", "i"), "")
     |> trim
-  when (laneIdRaw #! "") => laneIdRaw
-  => name
+  match laneIdRaw #! ""
+    | true => laneIdRaw
+    | false => name
 
 resolveStatus = (status: String): String =>
-  when (status #= "") => "In Progress"
-  => status
+  match status #= ""
+    | true => "In Progress"
+    | false => status
 
 resolveBranch = (branch: String): Option<String> =>
-  when (branch #= "") => Option.none()
-  => Option.some(branch)
+  match branch #= ""
+    | true => Option.none()
+    | false => Option.some(branch)
 
 readLanesAndStoreLogs = (boardDir: String) =>
   storeRes =
@@ -58,11 +66,12 @@ readLanesAndStoreLogs = (boardDir: String) =>
               tasks
               |> Array.findFirst((t: TaskBlock) => t.status #= "In Progress")
             activeTask = activeTaskOpt |> orElse(() => tasks |> Array.head)
-            match activeTask
-              | None => []
-              | Some(t) =>
-                  when (t.id #= "") => []
-                  => ["[TASK] " + laneId + " working on " + t.id + " (" + t.title + ")"]
+            res =
+              activeTask
+              |> Option.filter((t: TaskBlock) => t.id #! "")
+              |> Option.map((t: TaskBlock) => ["[TASK] " + laneId + " working on " + t.id + " (" + t.title + ")"])
+              |> Option.getOrElse(() => [])
+            => res
           })
 
         lanes =
@@ -92,8 +101,9 @@ readLanesAndStoreLogs = (boardDir: String) =>
         => { lanes: lanes, logs: laneLogs }
 
 resolveTargetPath = (hasPrimary: Boolean, primary: String, alt: String): String =>
-  when (hasPrimary) => primary
-  => alt
+  match hasPrimary
+    | true => primary
+    | false => alt
 
 readTokensWorkflow = (boardDir: String) => effect {
   fallbackTokenUsage = {
@@ -108,15 +118,20 @@ readTokensWorkflow = (boardDir: String) => effect {
 
   hasPrimary <- fsService.exists(tokenPath)
   hasAlt <- fsService.exists(altTokenPath)
-  when (not hasPrimary and not hasAlt) => fallbackTokenUsage
+  tokens <- match hasPrimary or hasAlt
+    | false => Effect.succeed(fallbackTokenUsage)
+    | true => effect {
+      targetPath = resolveTargetPath(hasPrimary, tokenPath, altTokenPath)
+      rawOpt <- fsService.readFileString(targetPath) |> option
+      rawStr = Option.getOrElse(rawOpt, () => "")
+      parsed =
+        Option.some(rawStr)
+        |> Option.filter((s) => s #! "")
+        |> Option.flatMap(Schema.decodeUnknownOption(Schema.fromJsonString(TokenUsage)))
+      => parsed |> Option.getOrElse(() => fallbackTokenUsage)
+    }
 
-  targetPath = resolveTargetPath(hasPrimary, tokenPath, altTokenPath)
-  rawOpt <- fsService.readFileString(targetPath) |> option
-  rawStr = Option.getOrElse(rawOpt, () => "")
-  when (rawStr #= "") => fallbackTokenUsage
-
-  parsed = Schema.decodeUnknownOption(Schema.fromJsonString(TokenUsage))(rawStr)
-  => parsed |> getOrElse(() => fallbackTokenUsage)
+  => tokens
 }
 
 readTokensSync = (boardDir: String): TokenUsage =>
@@ -127,7 +142,7 @@ readTokensSync = (boardDir: String): TokenUsage =>
   }
   res =
     readTokensWorkflow(boardDir)
-    |> provide(BunServices.layer)
+    |> Effect.provide(BunServices.layer)
     |> Effect.catch((_) => Effect.succeed(fallbackTokenUsage))
     |> Effect.runSync
   => res
@@ -137,24 +152,31 @@ readRecentLogsWorkflow = (boardDir: String, initialLogs: Array<String>) => effec
   pathService <- Path.Path
   logPath = pathService.join(boardDir, ".slopboss.log")
   hasLog <- fsService.exists(logPath)
-  when (not hasLog) => initialLogs
+  logs <- match hasLog
+    | false => Effect.succeed(initialLogs)
+    | true => effect {
+      rawOpt <- fsService.readFileString(logPath) |> option
+      raw = Option.getOrElse(rawOpt, () => "")
+      recentLines =
+        Option.some(raw)
+        |> Option.filter((s) => s #! "")
+        |> Option.map((s) =>
+          s
+          |> String.split("\n")
+          |> Array.filter((l: String) => (l |> String.trim) #! "")
+          |> Array.takeRight(10)
+        )
+        |> Option.getOrElse(() => [])
+      => Array.appendAll(initialLogs, recentLines)
+    }
 
-  rawOpt <- fsService.readFileString(logPath) |> option
-  raw = Option.getOrElse(rawOpt, () => "")
-  when (raw #= "") => initialLogs
-
-  lines =
-    raw
-    |> split("\n")
-    |> filter((l: String) => (l |> trim) #! "")
-  recentLines = lines |> takeRight(10)
-  => Array.appendAll(initialLogs, recentLines)
+  => logs
 }
 
 readRecentLogsSync = (boardDir: String, initialLogs: Array<String>): Array<String> =>
   logsFromFs =
     readRecentLogsWorkflow(boardDir, initialLogs)
-    |> provide(BunServices.layer)
+    |> Effect.provide(BunServices.layer)
     |> Effect.catch((_) => Effect.succeed(initialLogs))
     |> Effect.runSync
   => logsFromFs
@@ -175,48 +197,59 @@ export readDashboardState = (boardDir: String): DashboardState =>
     recentLogs: recentLogs
   }
 
-export extractOption = (opt: Any, fallback: Unknown): Unknown =>
-  when (Option.isOption(opt)) => Option.getOrElse(opt, () => fallback)
-  when (Predicate.isNotNullish(opt)) => opt
-  => fallback
+export extractOption = (opt: Unknown, fallback: Unknown): Unknown =>
+  match
+    | Option.isOption(opt) => Option.getOrElse(opt, () => fallback)
+    | Predicate.isNotNullish(opt) => opt
+    | _ => fallback
 
 isPositiveNumber = (val: Unknown): Boolean =>
   num = Number.parse("" + val) |> Option.getOrElse(() => 0)
-  when (num > 0) => true
-  => false
+  match num > 0
+    | true => true
+    | false => false
 
-extractFromOption = (opt: Any): Number =>
-  raw = Option.getOrElse(opt, () => 0)
-  num = Number.parse("" + raw) |> Option.getOrElse(() => 0)
-  when (num > 0) => num
-  => Infinity
+export extractMaxTicks = (opt: Unknown): Number =>
+  optNum = Schema.decodeUnknownOption(OptNumSchema)(opt)
+  rawNum =
+    match optNum
+      | Some(innerOpt) => Number.parse("" + Option.getOrElse(innerOpt, () => 0))
+      |> Option.getOrElse(() => 0)
+      | None => Number.parse("" + opt) |> Option.getOrElse(() => 0)
+  => match rawNum > 0
+    | true => rawNum
+    | false => Infinity
 
-export extractMaxTicks = (opt: Any): Number =>
-  when (Option.isOption(opt)) => extractFromOption(opt)
-  when (Predicate.isNotNullish(opt) and isPositiveNumber(opt)) => Number.parse("" + opt) |> getOrElse(() => Infinity)
-  => Infinity
-
-setupAbortSignal = (sigVal: Unknown, doneDeferred: Any) =>
-  when (not Predicate.isNotNullish(sigVal)) => true
-  sigObj: Any = sigVal
-  abortedVal: Any = Reflect.get(sigObj, "aborted")
-  aborted = Boolean(abortedVal)
-  when (aborted) => Deferred.succeed(doneDeferred, true) |> Effect.runSync
-  abortListener = () =>
-    Deferred.succeed(doneDeferred, true) |> Effect.runSync
-    => true
-  safeInvoke(sigVal, "addEventListener", ["abort", abortListener, { once: true }])
-  => true
+setupAbortSignal = (sigVal: Unknown, doneDeferred: Deferred.Deferred<Unknown>) =>
+  sigObjOpt = Schema.decodeUnknownOption(ObjSchema)(sigVal)
+  aborted =
+    sigObjOpt
+    |> Option.map((sigObj) => Boolean(Reflect.get(sigObj, "aborted")))
+    |> Option.getOrElse(() => false)
+  hasSig = Option.isSome(sigObjOpt)
+  => match
+    | not hasSig => true
+    | aborted => Deferred.succeed(doneDeferred, true) |> Effect.runSync
+    | _ =>
+        abortListener = () =>
+          Deferred.succeed(doneDeferred, true) |> Effect.runSync
+          => true
+        safeInvoke(sigVal, "addEventListener", ["abort", abortListener, { once: true }])
+        => true
 
 invokeOnTick = (onTickVal: Unknown, state: DashboardState, output: String) =>
-  when (not Predicate.isFunction(onTickVal)) => true
-  safeInvoke(onTickVal, "call", [Option.none(), state, output])
-  => true
+  match Predicate.isFunction(onTickVal)
+    | false => true
+    | true =>
+        safeInvoke(onTickVal, "call", [Option.none(), state, output])
+        => true
 
-checkMaxTicks = (cntNum: Number, maxTicks: Number, doneDeferred: Any) =>
-  when (cntNum < maxTicks) => false
-  Deferred.succeed(doneDeferred, true) |> Effect.runSync
-  => true
+checkMaxTicks = (cntNum: Number, maxTicks: Number, doneDeferred: Deferred.Deferred<Unknown>) =>
+  match cntNum < maxTicks
+    | true => false
+    | false =>
+        Deferred.succeed(doneDeferred, true) |> Effect.runSync
+        => true
 
 runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions) => effect (unscoped) {
   stdin = extractOption(options.stdin, process.stdin)
@@ -235,7 +268,9 @@ runLiveViewScoped = (boardDir: String, pollMs: Number, options: LiveViewOptions)
   onData = (chunk: Unknown) =>
     str = "" + chunk
     isExitKey = str #= "q" or str #= "Q" or str #= ctrlC
-    when (isExitKey) => Deferred.succeed(doneDeferred, true) |> Effect.runSync
+    match isExitKey
+      | true => Deferred.succeed(doneDeferred, true) |> Effect.runSync
+      | false => Void
     => true
   _f <- Effect.addFinalizer(() => Effect.sync(() => {
     _1 = safeInvoke(stdin, "setRawMode", [false])

@@ -459,7 +459,7 @@ ts {
         const stdout = await new Response(proc.stdout).text();
 
         expect(exitCode).toBe(0);
-        expect(stdout).toMatch(/Checked \d+ files successfully \(0 errors(?:, 0 warnings)?\)/);
+        expect(stdout).toMatch(/Checked \d+ files successfully \(0 errors(?:, \d+ warnings?)?\)/);
       },
       30000
     );

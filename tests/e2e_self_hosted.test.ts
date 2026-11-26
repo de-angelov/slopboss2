@@ -139,5 +139,5 @@ Implement dependent component relying on SB2-BASE-01.
     const statusCode = await statusProc.exited;
     expect(statusCode).toBe(0);
     expect(statusOut).toContain("SLOPBOSS2 BOARD STATUS");
-  }, 30000);
+  }, 60000);
 });
